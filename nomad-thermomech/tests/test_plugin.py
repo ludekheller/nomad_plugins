@@ -24,24 +24,33 @@ def folder(tmp_path):
     return d
 
 
+MERCURY = 'R19_sa_30_after500_pulse20_cycles_V3_export.csv'
+
+
 def process(path):
-    """Run the WaveMatrix parser like the Oasis does: raw files resolved from the upload root."""
+    """Run the matching parser like the Oasis does: raw files resolved from the upload root."""
     from nomad.datamodel import EntryArchive
     from nomad.datamodel.context import ClientContext
     from nomad.utils import get_logger
 
+    from nomad_thermomech.parsers.mercury_parser import MercuryExportParser
     from nomad_thermomech.parsers.wavematrix_parser import WaveMatrixTestParser
 
+    parser = WaveMatrixTestParser() if str(path).endswith('.log') else MercuryExportParser()
     archive = EntryArchive(m_context=ClientContext(local_dir=str(Path(path).parents[1])))
-    WaveMatrixTestParser().parse(str(path), archive, logger=get_logger(__name__))
+    parser.parse(str(path), archive, logger=get_logger(__name__))
     return archive
+
+
+def _entries(folder):
+    return sorted(f.name for f in folder.glob('*.archive.json'))
 
 
 def test_only_the_log_is_matched(folder):
     from nomad.parsing.parsers import match_parser
 
     matched = {f.name for f in folder.iterdir() if match_parser(str(f))[0] is not None}
-    assert matched == {'Test170.log'}
+    assert matched == {'Test170.log', 'R19_sa_30_after500_pulse20_cycles_V3_export.csv'}
 
 
 def test_log_creates_entry_with_all_files(folder):
@@ -114,3 +123,75 @@ def _process_entry_keep(folder):
     archive.data = ThermomechTest.m_from_dict(data)
     normalize_all(archive)
     return archive.data
+
+
+@pytest.fixture
+def wm_only(tmp_path):
+    """Folder uploaded with the WaveMatrix files only (Mercury export comes later)."""
+    d = tmp_path / 'raw' / 'R19_cycles'
+    shutil.copytree(DATA, d, ignore=shutil.ignore_patterns(MERCURY))
+    return d
+
+
+def test_mercury_added_later(wm_only):
+    process(wm_only / 'Test170.log')
+    assert _entries(wm_only) == ['Test170.archive.json']
+    eln = wm_only / 'Test170.archive.json'
+    data = json.loads(eln.read_text())
+    assert 'mercury_export' not in data['data']['files'] and data['data']['name'] == 'Test170'
+    data['data']['specimen'] = {'specimen_id': 'R19', 'material': 'NiTi'}  # edited in the GUI
+    eln.write_text(json.dumps(data))
+
+    shutil.copy(DATA / MERCURY, wm_only / MERCURY)  # export from the DIC PC arrives
+    raw = process(wm_only / MERCURY)
+    assert raw.data.test_entry == 'R19_cycles/Test170.archive.json'
+    assert _entries(wm_only) == ['Test170.archive.json']  # no second entry
+    data = json.loads(eln.read_text())['data']
+    assert data['files']['mercury_export'] == f'R19_cycles/{MERCURY}'
+    assert data['name'] == NAME
+    assert data['specimen'] == {'specimen_id': 'R19', 'material': 'NiTi'}  # hand values kept
+
+    data.pop('m_def')
+    from nomad.datamodel import EntryArchive
+    from nomad.datamodel.context import ClientContext
+
+    from nomad_thermomech.schema_packages.thermomech import ThermomechTest
+
+    archive = EntryArchive(m_context=ClientContext(local_dir=str(wm_only.parent)))
+    archive.data = ThermomechTest.m_from_dict(data)
+    normalize_all(archive)
+    d = archive.data
+    assert d.specimen.specimen_id == 'R19' and len(d.mercury.time) == 18596
+    assert d.synchronisation.time_offset.magnitude == pytest.approx(27.835, abs=0.01)
+
+
+def test_mercury_before_wavematrix_is_noop(tmp_path):
+    d = tmp_path / 'raw' / 'R19_cycles'
+    d.mkdir(parents=True)
+    shutil.copy(DATA / MERCURY, d / MERCURY)
+    raw = process(d / MERCURY)
+    assert raw.data.test_entry is None and _entries(d) == []
+    for f in DATA.iterdir():  # WaveMatrix files arrive afterwards
+        if f.name != MERCURY:
+            shutil.copy(f, d / f.name)
+    process(d / 'Test170.log')
+    assert _entries(d) == [f'{NAME}.archive.json']
+    assert 'mercury_export' in json.loads((d / f'{NAME}.archive.json').read_text())['data']['files']
+
+
+def test_uploaded_together_one_entry(folder):
+    for f in (MERCURY, 'Test170.log', MERCURY):  # any order, repeated
+        process(folder / f)
+    assert _entries(folder) == [f'{NAME}.archive.json']
+    assert len(json.loads((folder / f'{NAME}.archive.json').read_text())['data']['files']) == 7
+
+
+def test_hand_set_name_is_kept(wm_only):
+    process(wm_only / 'Test170.log')
+    eln = wm_only / 'Test170.archive.json'
+    data = json.loads(eln.read_text())
+    data['data']['name'] = 'R19 superelastic cycling'
+    eln.write_text(json.dumps(data))
+    shutil.copy(DATA / MERCURY, wm_only / MERCURY)
+    process(wm_only / MERCURY)
+    assert json.loads(eln.read_text())['data']['name'] == 'R19 superelastic cycling'

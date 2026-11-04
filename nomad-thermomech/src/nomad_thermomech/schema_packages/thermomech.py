@@ -369,4 +369,11 @@ class WaveMatrixTestLog(EntryData):
     test_entry = Quantity(type=str, description='Thermomechanical-test entry created for this folder')
 
 
+class MercuryExport(EntryData):
+    """Raw Mercury RT export; its data are in the thermomechanical-test entry of the folder."""
+
+    m_def = Section(label='Mercury RT export (raw file)')
+    test_entry = Quantity(type=str, description='Thermomechanical-test entry this export was added to')
+
+
 m_package.__init_metainfo__()

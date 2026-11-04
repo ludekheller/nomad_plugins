@@ -28,6 +28,17 @@ The plugin recognises `TestNNN.log` and creates the editable entry
 * plots: stress vs DIC strain (one line per loop), stress and temperature vs time,
   strain vs time (DIC and from position), and a synchronisation check (both forces).
 
+### Mercury export added later
+
+The Mercury export is often collected on another PC. Upload the WaveMatrix files first
+(e.g. a zip of the test folder); the entry `TestNNN.archive.json` is created with the
+WaveMatrix data. Later put the Mercury export **into the same folder** of the upload
+(a zip containing the same folder name, or the upload's file browser inside that folder).
+The plugin recognises the export, adds it to the existing entry and reprocesses it
+(synchronisation, DIC plots). The entry file keeps its name; the displayed name becomes
+`TestNNN__<Mercury export name>` unless you changed it. Hand-entered values are kept.
+If the export arrives before the WaveMatrix files, it is picked up when they arrive.
+
 Fill in specimen ID, material, processing history and the test description in the GUI and
 save; hand-entered values are never overwritten. Raw files keep their original names.
 
@@ -38,5 +49,6 @@ pip install -e '.[dev]'
 pytest -q tests/
 ```
 
-`tests/data/Test170/` is a real example test (NiTi superelastic cycling, 20 loops:
-WaveMatrix Test170.* + Mercury export R19_...). `tests/test_sync.py` uses synthetic data.
+`tests/test_plugin.py` needs a real test folder in `tests/data/Test170/` (not in the
+repository - research data); without it those tests are skipped. `tests/test_sync.py`
+uses synthetic data and always runs.

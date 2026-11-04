@@ -13,6 +13,8 @@ from nomad.client import normalize_all, parse
 
 DATA = Path(__file__).parent / 'data'
 CSV = 'NiTiNb_23-1-1.csv'
+# the TRIOS example is research data and not in the public repository
+pytestmark = pytest.mark.skipif(not (DATA / CSV).exists(), reason='test data not available')
 
 
 @pytest.fixture

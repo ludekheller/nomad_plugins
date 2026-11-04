@@ -1,0 +1,25 @@
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60101,Log File Created
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60104,Software Version,3.1.24082.01
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60105,Console Version,10.4.22340.1
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60106,Controller Version,26.00.20220510
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60107,User Name,InstronPC
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60108,Computer Name,INSTRONNEW
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60109,System Name,
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60110,Frame Serial Number (System ID),E10BMTB10267
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60110,Test Started
+18/09/2025,15:15:46,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Linear) - Load String Stiffness(N/mm) = 0.0
+18/09/2025,15:15:49,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Linear:Position) - Stiffness Based Tuning state = FixedTuning  
+18/09/2025,15:15:49,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Linear:Load) - Stiffness Based Tuning state = DefaultTuned  
+18/09/2025,15:15:49,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Linear:Digital Position) - Stiffness Based Tuning state = DefaultTuned  
+18/09/2025,15:15:49,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Linear:Strain 1) - Not controllable
+18/09/2025,15:15:49,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Torsion) - Load String Stiffness(Nm/deg) = 0.097
+18/09/2025,15:15:49,NiTi_3mm_SE_SA,Test170,60300,Tuning Settings (Torsion:User-Defined) - Not controllable
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,60200,Test Status,Test Ended Normally
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,60120,Total Time,2574.59
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,60121,Total Cycle Count(Linear Waveform),0
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,60121,Total Cycle Count(Torsion Waveform),0
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,62000,SHA-256,Test170.steps.tracking.csv,79F3904104C0C81AB44EAF27D0F297B0FD2F47E9E4EF31092DBDCDC988ABB622
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,62000,SHA-256,Test170.steps.trends.csv,66602164B5E51A15BD397224015CE01E9C49353E600BBCAEE8F17B4509AC8BCE
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,62000,SHA-256,Test170.Stop.csv,6A302D6959678AA0C8D6FDB578BE5AD2E617E2C785613B5204FC06346249F885
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,60112,Test Finished
+18/09/2025,15:58:44,NiTi_3mm_SE_SA,Test170,60103,Closed

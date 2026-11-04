@@ -1,0 +1,2 @@
+Specimen Type: Custom Specimen
+Cross Sectional Area: 7.07000 mm²

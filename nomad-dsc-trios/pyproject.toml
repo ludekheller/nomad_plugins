@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nomad-dsc-trios"
+version = "0.1.0"
+description = "NOMAD plugin: DSC measurements on shape memory alloys from TA Instruments TRIOS CSV exports"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ludek Heller" }]
+dependencies = [
+    "nomad-lab>=1.3.0",
+    "tzdata",            # zoneinfo data for the run-date time zone (slim containers have none)
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points.'nomad.plugin']
+dsc_sma = "nomad_dsc_trios.schema_packages:dsc_sma"
+trios_dsc_parser = "nomad_dsc_trios.parsers:trios_dsc_parser"

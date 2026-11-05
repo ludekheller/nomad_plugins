@@ -1,24 +1,40 @@
-"""Parser for TRIOS DSC exports (CSV and TRIOS JSON).
+"""Parser for TRIOS exports: DSC (CSV, JSON) and DMA (JSON).
 
-For an uploaded `<run>.csv` or `<run>.json` it creates the editable entry `<run>.archive.json`
-(DSC_SMA, data_file = the CSV) unless that file already exists. That entry reads the
-CSV when it is processed. The CSV itself becomes a small read-only entry pointing to it.
+For an uploaded `<run>.csv`, `<run>.json` or `<run>.json.gz` it creates the editable entry
+`<run>.archive.json` (DSC_SMA or DMA_TRIOS by the instrument type in the export,
+data_file = the export) unless that file already exists. That entry reads the export when
+it is processed. The export itself becomes a small read-only entry pointing to it.
 """
 
+import gzip
 import json
 import os
+import re
 
 from nomad.parsing import MatchingParser
 
 from nomad_dsc_trios.schema_packages.dsc import TRIOS_DSC_Export
 
 ELN_DEF = 'nomad_dsc_trios.schema_packages.dsc.DSC_SMA'
+DMA_DEF = 'nomad_dsc_trios.schema_packages.dma.DMA_TRIOS'
+
+
+def instrument_type(path):
+    """Instrument type of a TRIOS JSON export ('DSC2500', 'DMA850' ...) from the first 300 kB."""
+    opener = gzip.open if path.lower().endswith('.gz') else open
+    try:
+        with opener(path, 'rt', encoding='utf-8-sig', errors='replace') as f:
+            head = f.read(300_000)
+    except OSError:
+        return None
+    m = re.search(r'"InstrumentConfigurations"\s*:\s*\[\s*\{.*?"Type"\s*:\s*"([^"]+)"', head, re.S)
+    return m.group(1) if m else None
 
 
 class TriosDSCParser(MatchingParser):
     def parse(self, mainfile, archive, logger=None, child_archives=None):
         csv_rel = mainfile.rsplit('/raw/', 1)[-1] if '/raw/' in mainfile else os.path.basename(mainfile)
-        eln_rel = os.path.splitext(csv_rel)[0] + '.archive.json'
+        eln_rel = re.sub(r'\.(csv|json|json\.gz)$', '', csv_rel, flags=re.IGNORECASE) + '.archive.json'
 
         archive.data = TRIOS_DSC_Export(dsc_entry=eln_rel)
         context = archive.m_context
@@ -27,10 +43,13 @@ class TriosDSCParser(MatchingParser):
             self._reprocess(context, eln_rel, logger)
             return
 
+        m_def = ELN_DEF
+        if not csv_rel.lower().endswith('.csv') and (instrument_type(mainfile) or '').upper().startswith('DMA'):
+            m_def = DMA_DEF
         with context.raw_file(eln_rel, 'w') as f:
-            json.dump({'data': {'m_def': ELN_DEF, 'data_file': csv_rel}}, f, indent=2)
+            json.dump({'data': {'m_def': m_def, 'data_file': csv_rel}}, f, indent=2)
         if logger:
-            logger.info('created DSC entry for TRIOS export', eln_entry=eln_rel)
+            logger.info('created entry for TRIOS export', eln_entry=eln_rel, entry_type=m_def.rsplit('.', 1)[-1])
         self._reprocess(context, eln_rel, logger)
 
     @staticmethod

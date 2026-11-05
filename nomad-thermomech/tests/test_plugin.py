@@ -92,7 +92,14 @@ def test_entry_reads_and_synchronises(folder):
     assert len(d.cycles) == 40
     labels = [f.label for f in d.figures]
     assert labels == ['Stress - strain (DIC)', 'Stress and temperature vs time', 'Strain vs time',
-                      'Synchronisation check (force)']
+                      'Synchronisation check (force)', 'Explorer (choose x and y)']
+    ex = d.figures[4].figure
+    x_menu = ex['layout']['updatemenus'][0]
+    names = [t['name'] for t in ex['data']]
+    assert 'Strain DIC, Mercury (%)' in names and 'Stress (MPa)' in names
+    assert [t['name'] for t in ex['data'] if t['visible'] is True] == ['Stress (MPa)']
+    assert x_menu['buttons'][x_menu['active']]['label'] == 'Strain DIC, Mercury (%)'
+    assert len(ex['data'][0]['x']) <= 3100  # thinned, plus gaps between loops
     names = [t['name'] for t in d.figures[0].figure['data']]
     assert names == [f'loop {i}' for i in range(0, 21)]
 

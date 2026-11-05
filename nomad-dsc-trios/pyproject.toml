@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nomad-dsc-trios"
-version = "0.2.0"
-description = "NOMAD plugin: DSC measurements on shape memory alloys from TA Instruments TRIOS CSV and JSON exports"
+version = "0.4.0"
+description = "NOMAD plugin: TA Instruments TRIOS exports - DSC (CSV, JSON) and DMA (JSON) on shape memory alloys"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -23,5 +23,6 @@ where = ["src"]
 
 [project.entry-points.'nomad.plugin']
 dsc_sma = "nomad_dsc_trios.schema_packages:dsc_sma"
+dma_trios = "nomad_dsc_trios.schema_packages:dma_trios"
 trios_dsc_parser = "nomad_dsc_trios.parsers:trios_dsc_parser"
 trios_dsc_json_parser = "nomad_dsc_trios.parsers:trios_dsc_json_parser"

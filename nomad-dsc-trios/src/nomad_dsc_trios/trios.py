@@ -265,6 +265,18 @@ def clean(o):
 JSON_SCHEMA_MARK = 'TRIOSJSONExportSchema'
 JSON_COLUMNS = {'Time': ('Time_s', 's'), 'Temperature': ('Temperature_°C', '°C'),
                 'Heat Flow (Normalized)': ('Heat Flow (Normalized)_W/g', 'W/g')}
+# channels offered in the x/y explorer plot (if present in the export): key -> axis label
+EXPLORER_VARIABLES = [
+    ('Time_s', 'Time (s)'),
+    ('Step time_s', 'Step time (s)'),
+    ('Temperature_°C', 'Temperature (°C)'),
+    ('Set Point Temperature_°C', 'Set point temperature (°C)'),
+    ('Sample Sensor Temperature_°C', 'Sample sensor temperature (°C)'),
+    ('Heat Flow (Normalized)_W/g', 'Heat flow (W/g)'),
+    ('Heat Flow_µW', 'Heat flow (µW)'),
+    ('Heat Capacity (Normalized)_J/(g.°C)', 'Heat capacity (J/(g·°C))'),
+    ('Delta T_µV', 'Delta T (µV)'),
+]
 
 
 def _value(q, unit=None):
@@ -273,13 +285,21 @@ def _value(q, unit=None):
         return None
     if unit and (q.get('Unit') or {}).get('Name') not in (None, unit):
         raise ValueError(f"unexpected unit {q['Unit']} (expected {unit})")
-    return float(q['Value'])
+    return _round(q['Value'])
+
+
+def _round(x, digits=7):
+    """TRIOS stores settings as float32 (99.2 -> 99.19999694824219): keep 7 significant digits."""
+    x = float(x)
+    return float(f'{x:.{digits}g}') if x else x
 
 
 def read_trios_json(doc, json_name, tz='Europe/Prague'):
     """Parse a TRIOS JSON export (TRIOS >= 5.8, schema TRIOSJSONExportSchema).
 
-    Same output as `read_trios_csv`: (data, ramps). Uses the 'Processed' results (TRIOS
+    Same output as `read_trios_csv` plus the number of TRIOS analyses and the channels for the
+    explorer plot: (data, ramps, n_analyses, explorer_groups).
+    Uses the 'Processed' results (TRIOS
     'Latest') if present, else 'Original'. Each results step becomes one segment.
     """
     if JSON_SCHEMA_MARK not in str((doc.get('Schema') or {}).get('Url', '')):
@@ -297,20 +317,28 @@ def read_trios_json(doc, json_name, tz='Europe/Prague'):
             raise ValueError(f'unexpected unit for {name}: {got} (expected {unit})')
 
     kt, kT, kq = (JSON_COLUMNS[c][0] for c in ('Time', 'Temperature', 'Heat Flow (Normalized)'))
-    rows_by_step = {}
+    ex_keys = [k for k, _ in EXPLORER_VARIABLES if k in headers]
+    rows_by_step, extra_by_step = {}, {}
     for row in res.get('Rows') or []:
         t, T, q = row.get(kt), row.get(kT), row.get(kq)
         if t is None or T is None or q is None:
             continue
-        cols = rows_by_step.setdefault(row.get('Results Step Id'), ([], [], []))
+        sid = row.get('Results Step Id')
+        cols = rows_by_step.setdefault(sid, ([], [], []))
         cols[0].append(float(t)), cols[1].append(float(T)), cols[2].append(float(q))
+        ex = extra_by_step.setdefault(sid, {k: [] for k in ex_keys})
+        for k in ex_keys:
+            v = row.get(k)
+            ex[k].append(math.nan if v is None else float(v))
 
-    segments, ramps, cycle = [], [], 0
+    segments, ramps, cycle, explorer = [], [], 0, []
     for step in res.get('ResultsSteps') or []:
         t, T, q = rows_by_step.get(step.get('Id'), ([], [], []))
         if not T:
             continue
-        cycle = add_segment(segments, ramps, cycle, (step.get('Name') or '').strip(), t, T, q)
+        name = (step.get('Name') or '').strip()
+        cycle = add_segment(segments, ramps, cycle, name, t, T, q)
+        explorer.append((f'{len(segments)}: {name}', extra_by_step.get(step.get('Id'), {})))
     if not segments:
         raise ValueError('no data rows in the TRIOS JSON export')
 
@@ -332,7 +360,7 @@ def read_trios_json(doc, json_name, tz='Europe/Prague'):
     flow_ml_min = None
     if flow.get('Value') is not None:
         u = (flow.get('Unit') or {}).get('Name')
-        flow_ml_min = float(flow['Value']) * (60 if u == 'mL/s' else 1)
+        flow_ml_min = _round(float(flow['Value']) * (60 if u == 'mL/s' else 1))
     T_all = [v for s in segments for v in s['temperature']]
     heat = {s['rate'] for s in segments if s.get('segment_type') == 'ramp_heating'}
     cool = {s['rate'] for s in segments if s.get('segment_type') == 'ramp_cooling'}
@@ -365,8 +393,8 @@ def read_trios_json(doc, json_name, tz='Europe/Prague'):
             'procedure': ' | '.join(s.get('Name', '').strip() for s in proc.get('Steps') or []),
         },
         'measurement': {
-            'tri_file': re.sub(r'\.json$', '.tri', json_name, flags=re.IGNORECASE),
+            'tri_file': re.sub(r'\.json(\.gz)?$', '.tri', json_name, flags=re.IGNORECASE),
             'segments': segments,
         },
     }
-    return clean(data), ramps, len(analyses)
+    return clean(data), ramps, len(analyses), explorer

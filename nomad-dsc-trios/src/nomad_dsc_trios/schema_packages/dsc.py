@@ -8,6 +8,8 @@ Python version of `dsc_sma.archive.yaml`. Differences:
     always rebuilt from the file.
 """
 
+import gzip
+import io
 import json
 
 import numpy as np
@@ -16,7 +18,8 @@ from nomad.datamodel.metainfo.annotations import ELNAnnotation
 from nomad.datamodel.metainfo.plot import PlotlyFigure, PlotSection
 from nomad.metainfo import Datetime, Quantity, SchemaPackage, Section, SubSection
 
-from nomad_dsc_trios.trios import overlay_figure, read_trios_csv, read_trios_json
+from nomad_dsc_trios.explorer import explorer_figure
+from nomad_dsc_trios.trios import EXPLORER_VARIABLES, overlay_figure, read_trios_csv, read_trios_json
 
 m_package = SchemaPackage(name='DSC on shape memory alloys (TA Instruments TRIOS)')
 
@@ -129,7 +132,7 @@ class DSC_SMA(PlotSection, EntryData):
 
     m_def = Section(label='DSC (SMA, TRIOS)')
 
-    data_file = _file('TRIOS DSC export (.csv or TRIOS JSON .json) in this upload; read on save')
+    data_file = _file('TRIOS DSC export (.csv, or TRIOS JSON .json / .json.gz) in this upload; read on save')
     run_name = _str()
     operator = _str()
     date = Quantity(type=Datetime, a_eln=ELNAnnotation(component='DateTimeEditQuantity'))
@@ -151,12 +154,20 @@ class DSC_SMA(PlotSection, EntryData):
         super().normalize(archive, logger)
 
     def _read_data_file(self, archive, logger):
-        n_json_analyses = 0
-        with archive.m_context.raw_file(self.data_file, 'r', encoding='utf-8-sig') as f:
-            if self.data_file.lower().endswith('.json'):
-                data, ramps, n_json_analyses = read_trios_json(json.load(f), self.data_file, tz=TIME_ZONE)
-            else:
-                data, ramps = read_trios_csv(f.read().splitlines(), self.data_file, tz=TIME_ZONE)
+        n_json_analyses, explorer = 0, None
+        name = self.data_file.lower()
+        if name.endswith('.json.gz'):
+            with archive.m_context.raw_file(self.data_file, 'rb') as f:
+                with gzip.open(f) as g:
+                    doc = json.load(io.TextIOWrapper(g, encoding='utf-8-sig'))
+            data, ramps, n_json_analyses, explorer = read_trios_json(doc, self.data_file, tz=TIME_ZONE)
+        else:
+            with archive.m_context.raw_file(self.data_file, 'r', encoding='utf-8-sig') as f:
+                if name.endswith('.json'):
+                    data, ramps, n_json_analyses, explorer = read_trios_json(json.load(f), self.data_file,
+                                                                             tz=TIME_ZONE)
+                else:
+                    data, ramps = read_trios_csv(f.read().splitlines(), self.data_file, tz=TIME_ZONE)
         if n_json_analyses:
             logger.warning('TRIOS analyses in the JSON export are not read yet; enter Ms/Mf/As/Af by hand',
                            analyses=n_json_analyses)
@@ -195,6 +206,14 @@ class DSC_SMA(PlotSection, EntryData):
         for segment in measurement.segments:
             segment.normalize(archive, logger)
         self.figures = [PlotlyFigure(label='All ramps', figure=overlay_figure(ramps))]
+        if explorer is None:  # CSV: the three channels stored in the segments
+            explorer = [(f'{i + 1}: {s["name"]}', {'Time_s': s['time'], 'Temperature_°C': s['temperature'],
+                                                  'Heat Flow (Normalized)_W/g': s['heat_flow_normalized']})
+                        for i, s in enumerate(data['measurement']['segments'])]
+        fig = explorer_figure(explorer, EXPLORER_VARIABLES, 'Temperature_°C', ['Heat Flow (Normalized)_W/g'],
+                              title='Explorer: choose x, click legend for y variables, choose y scale')
+        if fig:
+            self.figures.append(PlotlyFigure(label='Explorer (choose x and y)', figure=fig))
 
         logger.info(
             'TRIOS DSC file read',
@@ -207,8 +226,8 @@ class DSC_SMA(PlotSection, EntryData):
 class TRIOS_DSC_Export(EntryData):
     """Raw TRIOS DSC export; the measurement itself is in the linked DSC entry."""
 
-    m_def = Section(label='TRIOS DSC export (raw file)')
-    dsc_entry = Quantity(type=str, description='DSC entry (.archive.json) created for this file')
+    m_def = Section(label='TRIOS export (raw file)')
+    dsc_entry = Quantity(type=str, description='DSC or DMA entry (.archive.json) created for this file')
 
 
 m_package.__init_metainfo__()

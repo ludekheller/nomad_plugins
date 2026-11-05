@@ -27,6 +27,11 @@ The plugin recognises `TestNNN.log` and creates the editable entry
 * the per-step/loop summary from `steps.trends.csv`,
 * plots: stress vs DIC strain (one line per loop), stress and temperature vs time,
   strain vs time (DIC and from position), and a synchronisation check (both forces).
+* an **explorer plot**: menu "x" picks the x variable; click legend entries to show/hide y
+  variables (several at once); menu "y scale" switches between raw values, normalised by max
+  |value| (0…1, or −1…1 with negative values) and min–max (0…1). Variables: time, loop, step,
+  position, load, displacement, stress, strain from position, DIC strain (analogue input and
+  Mercury), temperatures.
 
 ### Mercury export added later
 

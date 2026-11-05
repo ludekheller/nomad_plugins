@@ -16,11 +16,20 @@ from nomad.datamodel.metainfo.plot import PlotlyFigure, PlotSection
 from nomad.metainfo import Datetime, MEnum, Quantity, Reference, SchemaPackage, Section, SubSection
 
 from nomad_thermomech import readers as R
+from nomad_thermomech.explorer import explorer_figure
 from nomad_thermomech.sync import find_offset
 
 m_package = SchemaPackage(name='Thermomechanical tests on SMAs (Instron WaveMatrix + Mercury RT)')
 
 MAX_PLOT_POINTS = 6000  # per trace, keeps the stored figures small
+MAX_LOOP_TRACES = 50  # explorer: one line per loop up to this many loops, else one line
+EXPLORER_VARIABLES = [
+    ('time', 'Time (s)'), ('loop', 'Loop'), ('step', 'Step'),
+    ('position', 'Position (mm)'), ('load', 'Load (N)'), ('displacement', 'Displacement (mm)'),
+    ('stress', 'Stress (MPa)'), ('strain_from_position', 'Strain from position (%)'),
+    ('strain_dic_analog', 'Strain DIC, analogue input (%)'), ('strain_dic', 'Strain DIC, Mercury (%)'),
+    ('temperature', 'Temperature (°C)'), ('temperature_dic', 'Temperature, Mercury (°C)'),
+]
 
 
 def _str(rich=False, **kw):
@@ -450,7 +459,34 @@ class ThermomechTest(PlotSection, EntryData):
                 {'type': 'scattergl', 'mode': 'lines', 'name': 'Mercury (shifted)', 'x': x2, 'y': y2}],
                 'layout': {'title': {'text': f'Force from both systems after alignment (r = {r:.5f})' if r else 'Force'},
                            'xaxis': {'title': {'text': 'Time (s)'}}, 'yaxis': {'title': {'text': 'Force (N)'}}}}))
+        explorer = self._explorer()
+        if explorer:
+            figs.append(PlotlyFigure(label='Explorer (choose x and y)', figure=explorer))
         return figs
+
+    def _explorer(self):
+        """x/y explorer over the WaveMatrix record (+ Mercury values interpolated onto it)."""
+        w, m = self.wavematrix, self.mercury
+        if w is None or w.time is None:
+            return None
+        mag = lambda q: None if q is None else np.asarray(getattr(q, 'magnitude', q), dtype=float)  # noqa: E731
+        cols = {k: mag(getattr(w, k)) for k, _ in EXPLORER_VARIABLES if k in WaveMatrixData.m_def.all_quantities}
+        tw = cols['time']
+        if m is not None and m.time_aligned is not None:
+            tm = mag(m.time_aligned)
+            for key, q in (('strain_dic', m.strain), ('temperature_dic', m.temperature)):
+                if q is not None:
+                    cols[key] = np.interp(tw, tm, mag(q), left=np.nan, right=np.nan)
+        cols = {k: v for k, v in cols.items() if v is not None and len(v) == len(tw)}
+        loop = cols.get('loop')
+        loops = np.unique(np.round(loop[~np.isnan(loop)])) if loop is not None else []
+        if 1 < len(loops) <= MAX_LOOP_TRACES:
+            groups = [(f'loop {int(lp)}', {k: v[np.round(loop) == lp] for k, v in cols.items()}) for lp in loops]
+        else:
+            groups = [('all data', cols)]
+        x = 'strain_dic' if 'strain_dic' in cols else 'strain_dic_analog' if 'strain_dic_analog' in cols else 'time'
+        return explorer_figure(groups, EXPLORER_VARIABLES, x, ['stress'],
+                               title='Explorer: choose x, click legend for y variables, choose y scale')
 
 
 def _raw_root(context):

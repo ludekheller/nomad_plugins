@@ -1,5 +1,7 @@
 # nomad-dsc-trios
 
+(TA Instruments TRIOS: DSC and DMA.)
+
 NOMAD plugin for DSC measurements on shape memory alloys exported from
 TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
 
@@ -13,6 +15,10 @@ TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
   'Processed' results (else 'Original'), sample, operator, start time, instrument
   configuration and procedure. TRIOS analyses inside the JSON are not read yet (a warning
   says so); enter Ms/Mf/As/Af by hand or use the CSV export for TRIOS onsets.
+* TRIOS JSON files are large (~56 MB per run). Upload them gzip-compressed as
+  `<run>.json.gz` (~6 MB; 7-Zip -> Add to archive -> format gzip, or `gzip -k <run>.json`).
+  The plugin reads `.json.gz` directly; a `.zip` does not help because NOMAD unpacks it.
+  In Jupyter: `json.load(gzip.open(path, 'rt', encoding='utf-8-sig'))`.
 * If both `<run>.csv` and `<run>.json` are uploaded, they share one entry
   (`<run>.archive.json`, data from the file that arrived first).
 * The DSC entry (`DSC (SMA, TRIOS)`) reads the CSV: instrument settings, procedure,
@@ -25,6 +31,26 @@ TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
 * A DSC entry can also be created by hand (NEW ENTRY -> DSC (SMA, TRIOS)) and a CSV
   attached to `data_file`.
 * The entry list shows the run (sample) name instead of the file name.
+* **Explorer plot** ("Explorer (choose x and y)"): menu "x" picks the x variable; click
+  legend entries to show/hide y variables (several at once); menu "y scale" switches between
+  raw values, normalised by max |value| (0…1, or −1…1 with negative values) and min–max
+  (0…1). From a TRIOS JSON export: time, step time, temperature, set point, sample sensor
+  temperature, heat flow (W/g and µW), heat capacity, delta T; from a CSV: time, temperature,
+  heat flow.
+
+## DMA (TRIOS JSON)
+
+A TRIOS JSON export of a **DMA** run (DMA 850 ...; `.json` or `.json.gz`) creates a
+`DMA (TRIOS)` entry instead (the instrument type is read from the export):
+
+* sample, operator, start time, clamp geometry (clamp, length, dimensions, notes),
+  instrument, procedure name and steps;
+* one segment per results step with time, temperature, set point, strain, stress, force,
+  displacement, length, modulus (and storage/loss modulus, tan δ, frequency if present);
+* plots: stress vs strain, strain vs temperature (one line per step) and the explorer with
+  all numeric channels of the export.
+
+Fill in material, composition, processing history and the test description in the GUI.
 
 ## Install in a NOMAD Oasis (nomad-distro-template)
 

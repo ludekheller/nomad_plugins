@@ -1,6 +1,6 @@
-"""Parser for TRIOS DSC CSV exports.
+"""Parser for TRIOS DSC exports (CSV and TRIOS JSON).
 
-For an uploaded `<run>.csv` it creates the editable entry `<run>.archive.json`
+For an uploaded `<run>.csv` or `<run>.json` it creates the editable entry `<run>.archive.json`
 (DSC_SMA, data_file = the CSV) unless that file already exists. That entry reads the
 CSV when it is processed. The CSV itself becomes a small read-only entry pointing to it.
 """

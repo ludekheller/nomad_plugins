@@ -1,12 +1,20 @@
 # nomad-dsc-trios
 
 NOMAD plugin for DSC measurements on shape memory alloys exported from
-TA Instruments TRIOS (DSC 2500, CSV export).
+TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
 
 ## What it does
 
-* **Upload a TRIOS DSC `.csv`** (optionally with the `.tri`) to a NOMAD project.
-  The plugin recognises it and creates the editable DSC entry `<run>.archive.json`.
+* **Upload a TRIOS DSC `.csv` or TRIOS JSON `.json`** (optionally with the `.tri`) to a
+  NOMAD project. The plugin recognises it and creates the editable DSC entry
+  `<run>.archive.json`.
+* TRIOS JSON (File -> Export, or automatic export at the end of each run, or batch export of
+  old files) follows TA's public schema (TRIOSJSONExportSchema). The plugin reads the
+  'Processed' results (else 'Original'), sample, operator, start time, instrument
+  configuration and procedure. TRIOS analyses inside the JSON are not read yet (a warning
+  says so); enter Ms/Mf/As/Af by hand or use the CSV export for TRIOS onsets.
+* If both `<run>.csv` and `<run>.json` are uploaded, they share one entry
+  (`<run>.archive.json`, data from the file that arrived first).
 * The DSC entry (`DSC (SMA, TRIOS)`) reads the CSV: instrument settings, procedure,
   sample mass, every procedure step as a segment with its own plot, the TRIOS
   onset/endset analyses, Ms/Mf/As/Af (when unambiguous), and an overlay plot of all
@@ -16,6 +24,7 @@ TA Instruments TRIOS (DSC 2500, CSV export).
   fields are filled from the file. Segments and plots are always rebuilt from the file.
 * A DSC entry can also be created by hand (NEW ENTRY -> DSC (SMA, TRIOS)) and a CSV
   attached to `data_file`.
+* The entry list shows the run (sample) name instead of the file name.
 
 ## Install in a NOMAD Oasis (nomad-distro-template)
 

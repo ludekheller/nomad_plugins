@@ -8,13 +8,15 @@ Python version of `dsc_sma.archive.yaml`. Differences:
     always rebuilt from the file.
 """
 
+import json
+
 import numpy as np
 from nomad.datamodel.data import ArchiveSection, EntryData
 from nomad.datamodel.metainfo.annotations import ELNAnnotation
 from nomad.datamodel.metainfo.plot import PlotlyFigure, PlotSection
 from nomad.metainfo import Datetime, Quantity, SchemaPackage, Section, SubSection
 
-from nomad_dsc_trios.trios import overlay_figure, read_trios_csv
+from nomad_dsc_trios.trios import overlay_figure, read_trios_csv, read_trios_json
 
 m_package = SchemaPackage(name='DSC on shape memory alloys (TA Instruments TRIOS)')
 
@@ -127,7 +129,7 @@ class DSC_SMA(PlotSection, EntryData):
 
     m_def = Section(label='DSC (SMA, TRIOS)')
 
-    data_file = _file('TRIOS DSC export (.csv) in this upload; read on save')
+    data_file = _file('TRIOS DSC export (.csv or TRIOS JSON .json) in this upload; read on save')
     run_name = _str()
     operator = _str()
     date = Quantity(type=Datetime, a_eln=ELNAnnotation(component='DateTimeEditQuantity'))
@@ -144,12 +146,20 @@ class DSC_SMA(PlotSection, EntryData):
                 self._read_data_file(archive, logger)
             except Exception as e:  # keep the entry usable if the file is not readable
                 logger.error('could not read the TRIOS DSC file', data_file=self.data_file, exc_info=e)
+        if self.run_name and archive.metadata is not None:
+            archive.metadata.entry_name = self.run_name  # entry list shows the run, not the file name
         super().normalize(archive, logger)
 
     def _read_data_file(self, archive, logger):
+        n_json_analyses = 0
         with archive.m_context.raw_file(self.data_file, 'r', encoding='utf-8-sig') as f:
-            lines = f.read().splitlines()
-        data, ramps = read_trios_csv(lines, self.data_file, tz=TIME_ZONE)
+            if self.data_file.lower().endswith('.json'):
+                data, ramps, n_json_analyses = read_trios_json(json.load(f), self.data_file, tz=TIME_ZONE)
+            else:
+                data, ramps = read_trios_csv(f.read().splitlines(), self.data_file, tz=TIME_ZONE)
+        if n_json_analyses:
+            logger.warning('TRIOS analyses in the JSON export are not read yet; enter Ms/Mf/As/Af by hand',
+                           analyses=n_json_analyses)
 
         # top-level quantities: fill only if empty
         for q in ('run_name', 'operator', 'date', 'notes'):

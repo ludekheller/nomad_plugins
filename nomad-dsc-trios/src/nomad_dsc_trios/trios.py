@@ -106,6 +106,29 @@ def overlay_figure(ramps):
     }
 
 
+def add_segment(segments, ramps, cycle, title, t, T, q):
+    """Append one procedure step as a segment (ramps also go to `ramps`); returns the cycle count."""
+    seg = {'name': title, 'time': t, 'temperature': T, 'heat_flow_normalized': q}
+    m = re.match(r'Ramp\s+([\d.]+)\s*°C/min to\s+([-\d.]+)\s*°C', title)
+    if m and T:
+        seg['rate'] = float(m.group(1))  # K/min
+        seg['target_temperature'] = float(m.group(2))  # °C
+        cooling = float(m.group(2)) < T[0]
+        seg['segment_type'] = 'ramp_cooling' if cooling else 'ramp_heating'
+        if cooling:
+            cycle += 1  # a new cycle starts with each cooling ramp
+        n_ramp = sum(1 for s in segments if 'rate' in s) + 1
+        label = (
+            f'{n_ramp}: cycle {max(cycle, 1)} '
+            f"{'cooling' if cooling else 'heating'} to {seg['target_temperature']:g} °C"
+        )
+        ramps.append((label, T, q))
+    elif title.startswith('Isothermal'):
+        seg['segment_type'] = 'isothermal'
+    segments.append(seg)
+    return cycle
+
+
 def is_trios_dsc(lines):
     head = '\n'.join(lines[:10])
     return 'Instrument name,DSC' in head and any(ln.strip() == '[step]' for ln in lines)
@@ -135,24 +158,7 @@ def read_trios_csv(lines, csv_name, tz='Europe/Prague'):
         if bad:
             raise ValueError(f"unexpected units in step '{title}': {bad}")
         T, q, t = data['Temperature'], data['Heat Flow (Normalized)'], data['Time']
-        seg = {'name': title, 'time': t, 'temperature': T, 'heat_flow_normalized': q}
-        m = re.match(r'Ramp\s+([\d.]+)\s*°C/min to\s+([-\d.]+)\s*°C', title)
-        if m and T:
-            seg['rate'] = float(m.group(1))  # K/min
-            seg['target_temperature'] = float(m.group(2))  # °C
-            cooling = float(m.group(2)) < T[0]
-            seg['segment_type'] = 'ramp_cooling' if cooling else 'ramp_heating'
-            if cooling:
-                cycle += 1  # a new cycle starts with each cooling ramp
-            n_ramp = sum(1 for s in segments if 'rate' in s) + 1
-            label = (
-                f'{n_ramp}: cycle {max(cycle, 1)} '
-                f"{'cooling' if cooling else 'heating'} to {seg['target_temperature']:g} °C"
-            )
-            ramps.append((label, T, q))
-        elif title.startswith('Isothermal'):
-            seg['segment_type'] = 'isothermal'
-        segments.append(seg)
+        cycle = add_segment(segments, ramps, cycle, title, t, T, q)
 
     if not segments:
         raise ValueError('no [step] data blocks found - not a TRIOS DSC CSV export?')
@@ -253,3 +259,114 @@ def clean(o):
     if isinstance(o, list):
         return [clean(v) for v in o]
     return o
+
+
+# ------------------------------------------------------------------ TRIOS JSON export
+JSON_SCHEMA_MARK = 'TRIOSJSONExportSchema'
+JSON_COLUMNS = {'Time': ('Time_s', 's'), 'Temperature': ('Temperature_°C', '°C'),
+                'Heat Flow (Normalized)': ('Heat Flow (Normalized)_W/g', 'W/g')}
+
+
+def _value(q, unit=None):
+    """{'Value': x, 'Unit': {'Name': u}} -> x (checks the unit if given)."""
+    if not isinstance(q, dict) or q.get('Value') is None:
+        return None
+    if unit and (q.get('Unit') or {}).get('Name') not in (None, unit):
+        raise ValueError(f"unexpected unit {q['Unit']} (expected {unit})")
+    return float(q['Value'])
+
+
+def read_trios_json(doc, json_name, tz='Europe/Prague'):
+    """Parse a TRIOS JSON export (TRIOS >= 5.8, schema TRIOSJSONExportSchema).
+
+    Same output as `read_trios_csv`: (data, ramps). Uses the 'Processed' results (TRIOS
+    'Latest') if present, else 'Original'. Each results step becomes one segment.
+    """
+    if JSON_SCHEMA_MARK not in str((doc.get('Schema') or {}).get('Url', '')):
+        raise ValueError('not a TRIOS JSON export')
+    results_all = doc.get('Results') or {}
+    res = results_all.get('Processed') or results_all.get('Original')
+    if not res:
+        raise ValueError('no Results in the TRIOS JSON export')
+    headers = res.get('ColumnHeaders') or {}
+    for name, (key, unit) in JSON_COLUMNS.items():
+        if key not in headers:
+            raise ValueError(f'column {key!r} missing in the TRIOS JSON export')
+        got = (headers[key].get('Unit') or {}).get('Name')
+        if got != unit:
+            raise ValueError(f'unexpected unit for {name}: {got} (expected {unit})')
+
+    kt, kT, kq = (JSON_COLUMNS[c][0] for c in ('Time', 'Temperature', 'Heat Flow (Normalized)'))
+    rows_by_step = {}
+    for row in res.get('Rows') or []:
+        t, T, q = row.get(kt), row.get(kT), row.get(kq)
+        if t is None or T is None or q is None:
+            continue
+        cols = rows_by_step.setdefault(row.get('Results Step Id'), ([], [], []))
+        cols[0].append(float(t)), cols[1].append(float(T)), cols[2].append(float(q))
+
+    segments, ramps, cycle = [], [], 0
+    for step in res.get('ResultsSteps') or []:
+        t, T, q = rows_by_step.get(step.get('Id'), ([], [], []))
+        if not T:
+            continue
+        cycle = add_segment(segments, ramps, cycle, (step.get('Name') or '').strip(), t, T, q)
+    if not segments:
+        raise ValueError('no data rows in the TRIOS JSON export')
+
+    sample = doc.get('Sample') or {}
+    proc = doc.get('Procedure') or {}
+    conf = ((proc.get('Configuration') or {}).get('InstrumentConfigurations') or [{}])[0]
+    analyses = doc.get('Analyses') or []
+
+    date_iso = None
+    if doc.get('StartTime'):
+        try:
+            dt = datetime.fromisoformat(doc['StartTime'])
+            date_iso = (dt if dt.tzinfo else dt.replace(tzinfo=ZoneInfo(tz))).isoformat()
+        except ValueError:
+            pass
+    mass_mg = _value(sample.get('Mass'), 'mg')
+    gas = next((v for k, v in conf.items() if k.startswith('Gas') and k.endswith('Type') and v), None)
+    flow = conf.get('FlowRate') or {}
+    flow_ml_min = None
+    if flow.get('Value') is not None:
+        u = (flow.get('Unit') or {}).get('Name')
+        flow_ml_min = float(flow['Value']) * (60 if u == 'mL/s' else 1)
+    T_all = [v for s in segments for v in s['temperature']]
+    heat = {s['rate'] for s in segments if s.get('segment_type') == 'ramp_heating'}
+    cool = {s['rate'] for s in segments if s.get('segment_type') == 'ramp_cooling'}
+    operators = ', '.join(o.get('Name', '') for o in doc.get('Operators') or [] if o.get('Name')) or None
+    instrument = conf.get('Type') or conf.get('Name') or 'DSC'
+    if not instrument.startswith('DSC'):
+        raise ValueError(f'not a DSC export (instrument {instrument})')
+
+    data = {
+        'data_file': json_name,
+        'run_name': sample.get('Name'),
+        'operator': operators,
+        'date': date_iso,
+        'specimen': {
+            'specimen_id': sample.get('Name'),
+            'mass': mass_mg * 1e-6 if mass_mg else None,  # kg
+        },
+        'instrument_settings': {
+            'instrument': f"TA Instruments {conf.get('Name') or instrument}",
+            'instrument_serial': conf.get('SerialNumber'),
+            'exotherm_direction': conf.get('ExothermDirection'),
+            'pan_type': sample.get('PanType'),
+            'purge_gas': gas,
+            'purge_flow': flow_ml_min,  # mL/min
+            'heating_rate': max(heat) if heat else None,
+            'cooling_rate': max(cool) if cool else None,
+            'temperature_min': min(T_all),
+            'temperature_max': max(T_all),
+            'number_of_cycles': len([s for s in segments if s.get('segment_type') == 'ramp_cooling']),
+            'procedure': ' | '.join(s.get('Name', '').strip() for s in proc.get('Steps') or []),
+        },
+        'measurement': {
+            'tri_file': re.sub(r'\.json$', '.tri', json_name, flags=re.IGNORECASE),
+            'segments': segments,
+        },
+    }
+    return clean(data), ramps, len(analyses)

@@ -15,3 +15,12 @@ trios_dsc_parser = TriosDSCParserEntryPoint(
     mainfile_mime_re=r'(text|application)/.*',
     mainfile_contents_re=r'Instrument name,DSC',
 )
+
+
+trios_dsc_json_parser = TriosDSCParserEntryPoint(
+    name='TriosDSCJsonParser',
+    description='Creates a DSC_SMA entry for every TA Instruments TRIOS JSON export of a DSC run.',
+    mainfile_name_re=r'^(?!.*\.archive\.json$).*\.json$',  # not NOMAD's own *.archive.json
+    mainfile_mime_re=r'(text|application)/.*',
+    mainfile_contents_re=r'TRIOSJSONExportSchema',
+)

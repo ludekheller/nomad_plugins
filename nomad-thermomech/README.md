@@ -39,6 +39,30 @@ The plugin recognises the export, adds it to the existing entry and reprocesses 
 `TestNNN__<Mercury export name>` unless you changed it. Hand-entered values are kept.
 If the export arrives before the WaveMatrix files, it is picked up when they arrive.
 
+### Campaigns (shared values for a series of tests)
+
+Tests of one campaign (same loading mode, material, specimen geometry ...) go into one folder,
+one subfolder per test:
+
+```
+NiTi_tension_round/
+    campaign.archive.json      <- "Thermomechanical test campaign" entry
+    Test170/  Test171/  ...    <- one folder per test (WaveMatrix files + Mercury export)
+```
+
+Create the campaign in that folder (project -> NEW ENTRY -> "Thermomechanical test campaign";
+any name works, `campaign` is a good one) and fill in loading mode (tension / compression /
+tension-compression / torsion / biaxial), test type, test temperature, strain rate, material,
+composition, semi-product, processing history and cross-section (shape + diameter / width x
+thickness / tube diameters).
+
+* Every test in the folder and its subfolders fills its **empty** fields from the nearest
+  campaign. Changing the campaign updates all tests that took the value from it; values typed
+  into an individual test are kept.
+* The cross-section area is taken from WaveMatrix `specimen.txt`; if there is none it is
+  computed from shape and dimensions.
+* The campaign lists its tests (links) and their number.
+
 Fill in specimen ID, material, processing history and the test description in the GUI and
 save; hand-entered values are never overwritten. Raw files keep their original names.
 

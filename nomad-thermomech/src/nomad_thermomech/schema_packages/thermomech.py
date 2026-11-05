@@ -5,13 +5,15 @@ export named in `files`, synchronises the two records via force, and builds the 
 Values typed in by hand (specimen description, notes ...) are never overwritten.
 """
 
+import json
+import math
 import os
 
 import numpy as np
 from nomad.datamodel.data import ArchiveSection, EntryData
 from nomad.datamodel.metainfo.annotations import ELNAnnotation
 from nomad.datamodel.metainfo.plot import PlotlyFigure, PlotSection
-from nomad.metainfo import Datetime, Quantity, SchemaPackage, Section, SubSection
+from nomad.metainfo import Datetime, MEnum, Quantity, Reference, SchemaPackage, Section, SubSection
 
 from nomad_thermomech import readers as R
 from nomad_thermomech.sync import find_offset
@@ -33,6 +35,15 @@ def _num(unit, **kw):
 def _file(description):
     return Quantity(type=str, description=description,
                     a_eln=ELNAnnotation(component='FileEditQuantity'), a_browser=dict(adaptor='RawFileAdaptor'))
+
+
+def _enum(values, **kw):
+    return Quantity(type=MEnum(*values), a_eln=ELNAnnotation(component='EnumEditQuantity'), **kw)
+
+
+LOADING_MODES = ['tension', 'compression', 'tension-compression', 'torsion', 'biaxial']
+SHAPES = ['round', 'rectangular', 'tube', 'wire', 'other']
+CAMPAIGN_FILE = 'campaign.archive.json'
 
 
 def _arr(unit=None, **kw):
@@ -59,8 +70,14 @@ class Specimen(ArchiveSection):
     semi_product = _str(description='wire, ribbon, sheet, bar, LPBF part ...')
     processing_history = _str(rich=True, description='heat treatment, cold work, training ...')
     specimen_type = _str()
+    cross_section_shape = _enum(SHAPES)
+    diameter = _num('millimeter', description='round / wire; outer diameter of a tube')
+    inner_diameter = _num('millimeter', description='tube only')
+    width = _num('millimeter', description='rectangular only')
+    thickness = _num('millimeter', description='rectangular only')
     cross_section_area = Quantity(type=np.float64, unit='millimeter ** 2',
-                                  a_eln=ELNAnnotation(component='NumberEditQuantity'))
+                                  a_eln=ELNAnnotation(component='NumberEditQuantity'),
+                                  description='From WaveMatrix specimen.txt, or computed from the dimensions')
     gauge_length = _num('millimeter', description='Initial length of the DIC virtual extensometer')
 
 
@@ -147,6 +164,13 @@ class ThermomechTest(PlotSection, EntryData):
     duration = Quantity(type=np.float64, unit='second')
     status = Quantity(type=str)
     operator = _str()
+    loading_mode = _enum(LOADING_MODES)
+    test_type = _str(description='e.g. superelastic cycling, isothermal tensile test, thermal cycling under load')
+    test_temperature = _num('celsius')
+    strain_rate = _num('1 / second')
+    campaign_file = Quantity(type=str, description='Campaign entry whose values filled the empty fields',
+                             a_browser=dict(adaptor='RawFileAdaptor'))
+    campaign_filled = Quantity(type=str, description='Values taken from the campaign (internal, JSON)')
     test_description = _str(rich=True, description='Test type and conditions, e.g. superelastic cycling ...')
     notes = _str(rich=True)
 
@@ -166,7 +190,74 @@ class ThermomechTest(PlotSection, EntryData):
                 self._read_files(archive, logger)
             except Exception as e:
                 logger.error('could not read the test files', exc_info=e)
+        try:
+            self._apply_campaign(archive, logger)
+        except Exception as e:
+            logger.warning('could not apply the campaign values', exc_info=e)
+        self._compute_area()
+        if self.name and archive.metadata is not None:
+            archive.metadata.entry_name = self.name
         super().normalize(archive, logger)
+
+    # -------------------------------------------------------------- campaign
+    def _folder(self):
+        f = self.files.wavematrix_log if self.files is not None else None
+        return os.path.dirname(f) if f else None
+
+    def _apply_campaign(self, archive, logger):
+        """Fill empty fields from the nearest campaign.archive.json in this or a parent folder.
+
+        A field counts as empty if it has no value, or if it still holds the value taken from the
+        campaign last time (so edits of the campaign propagate, hand-entered values are kept).
+        """
+        folder = self._folder()
+        if folder is None:
+            return
+        context = archive.m_context
+        path = find_campaign(_raw_root(context), folder)
+        if path is None:
+            self.campaign_file = None
+            return
+        with context.raw_file(path, 'r') as f:
+            camp = json.load(f).get('data', {})
+        self.campaign_file = path
+        before = json.loads(self.campaign_filled) if self.campaign_filled else {}
+        filled = {}
+        for key, (sec_name, q) in CAMPAIGN_FIELDS.items():
+            value = camp.get(key)
+            if value in (None, ''):
+                continue
+            target = self
+            if sec_name:
+                if getattr(self, sec_name) is None:
+                    setattr(self, sec_name, Specimen())
+                target = getattr(self, sec_name)
+            current = getattr(target, q)
+            current = getattr(current, 'magnitude', current)
+            if current is None or (key in before and _same(current, before[key])):
+                setattr(target, q, value)
+                filled[key] = value
+            elif key in before and not _same(current, before[key]):
+                pass  # changed by hand -> keep
+        self.campaign_filled = json.dumps(filled) if filled else None
+        if filled:
+            logger.info('values filled from the campaign', campaign=path, fields=sorted(filled))
+
+    def _compute_area(self):
+        s = self.specimen
+        if s is None or s.cross_section_area is not None or not s.cross_section_shape:
+            return
+        mm = lambda q: None if q is None else q.to('millimeter').magnitude  # noqa: E731
+        d, di, w, t = mm(s.diameter), mm(s.inner_diameter), mm(s.width), mm(s.thickness)
+        area = None
+        if s.cross_section_shape in ('round', 'wire') and d:
+            area = math.pi * d ** 2 / 4
+        elif s.cross_section_shape == 'tube' and d and di:
+            area = math.pi * (d ** 2 - di ** 2) / 4
+        elif s.cross_section_shape == 'rectangular' and w and t:
+            area = w * t
+        if area:
+            s.cross_section_area = area
 
     def _read(self, archive, path, encoding='utf-8-sig'):
         with archive.m_context.raw_file(path, 'r', encoding=encoding, errors='replace') as f:
@@ -360,6 +451,126 @@ class ThermomechTest(PlotSection, EntryData):
                 'layout': {'title': {'text': f'Force from both systems after alignment (r = {r:.5f})' if r else 'Force'},
                            'xaxis': {'title': {'text': 'Time (s)'}}, 'yaxis': {'title': {'text': 'Force (N)'}}}}))
         return figs
+
+
+def _raw_root(context):
+    """Absolute path of the upload's raw folder (local: ClientContext.local_dir)."""
+    root = getattr(context, 'local_dir', None)
+    if root is None:
+        try:
+            root = context.raw_path()
+        except Exception:
+            root = None
+    return root
+
+
+def _m_def(path):
+    try:
+        with open(path) as f:
+            return str(json.load(f).get('data', {}).get('m_def', ''))
+    except Exception:
+        return ''
+
+
+def find_campaign(root, folder):
+    """Upload-relative path of the nearest campaign entry in `folder` or a parent folder.
+
+    Any *.archive.json with a ThermomechCampaign counts; campaign.archive.json is checked first.
+    """
+    if root is None or folder is None:
+        return None
+    parts = folder.split('/') if folder else []
+    for i in range(len(parts), -1, -1):
+        rel = '/'.join(parts[:i])
+        d = os.path.join(root, rel)
+        if not os.path.isdir(d):
+            continue
+        names = sorted(n for n in os.listdir(d) if n.endswith('.archive.json'))
+        names.sort(key=lambda n: n != CAMPAIGN_FILE)
+        for n in names:
+            if _m_def(os.path.join(d, n)).endswith('.ThermomechCampaign'):
+                return os.path.join(rel, n) if rel else n
+    return None
+
+
+def _same(a, b):
+    if isinstance(a, (int, float, np.floating)) and isinstance(b, (int, float)):
+        return math.isclose(float(a), float(b), rel_tol=1e-9)
+    return a == b
+
+
+# campaign quantity -> (sub-section of the test or '' for the test itself, quantity name)
+CAMPAIGN_FIELDS = {
+    'loading_mode': ('', 'loading_mode'), 'test_type': ('', 'test_type'),
+    'test_temperature': ('', 'test_temperature'), 'strain_rate': ('', 'strain_rate'),
+    'material': ('specimen', 'material'), 'nominal_composition': ('specimen', 'nominal_composition'),
+    'semi_product': ('specimen', 'semi_product'), 'processing_history': ('specimen', 'processing_history'),
+    'cross_section_shape': ('specimen', 'cross_section_shape'), 'diameter': ('specimen', 'diameter'),
+    'inner_diameter': ('specimen', 'inner_diameter'), 'width': ('specimen', 'width'),
+    'thickness': ('specimen', 'thickness'),
+}
+
+
+class ThermomechCampaign(EntryData):
+    """A campaign of thermomechanical tests sharing loading mode, material and specimen geometry.
+
+    Create it in a folder (any name; campaign.archive.json is a good choice): every test entry in
+    that folder and its subfolders fills its empty fields from the nearest campaign, and the
+    campaign lists those tests.
+    """
+
+    m_def = Section(label='Thermomechanical test campaign')
+    name = _str()
+    description = _str(rich=True)
+    loading_mode = _enum(LOADING_MODES)
+    test_type = _str(description='e.g. superelastic cycling, isothermal tensile test, thermal cycling under load')
+    test_temperature = _num('celsius')
+    strain_rate = _num('1 / second')
+    material = _str(description='e.g. NiTi, NiTiHf, NiTiNb')
+    nominal_composition = _str()
+    semi_product = _str(description='wire, ribbon, sheet, bar, LPBF part ...')
+    processing_history = _str(rich=True)
+    cross_section_shape = _enum(SHAPES)
+    diameter = _num('millimeter', description='round / wire; outer diameter of a tube')
+    inner_diameter = _num('millimeter', description='tube only')
+    width = _num('millimeter', description='rectangular only')
+    thickness = _num('millimeter', description='rectangular only')
+    n_tests = Quantity(type=int)
+    tests = Quantity(type=Reference(ThermomechTest.m_def), shape=['*'],
+                     description='Test entries in this folder and its subfolders')
+
+    def normalize(self, archive, logger):
+        super().normalize(archive, logger)
+        if self.name and archive.metadata is not None:
+            archive.metadata.entry_name = self.name
+        mainfile = archive.metadata.mainfile if archive.metadata is not None else None
+        context = archive.m_context
+        root = _raw_root(context)
+        if not mainfile or not root:
+            return
+        folder = os.path.dirname(mainfile)
+        found = []
+        for dirpath, _, names in os.walk(os.path.join(root, folder)):
+            for n in sorted(names):
+                if not n.endswith('.archive.json'):
+                    continue
+                full = os.path.join(dirpath, n)
+                if not _m_def(full).endswith('.ThermomechTest'):
+                    continue
+                rel = os.path.relpath(full, root)
+                if find_campaign(root, os.path.dirname(rel)) == mainfile:  # not claimed by a nearer campaign
+                    found.append(rel)
+        found.sort()
+        self.n_tests = len(found)
+        self.tests = [f'../upload/archive/mainfile/{p}#data' for p in found] or None
+        # reprocess the tests so they pick up the (changed) campaign values
+        for p in found:
+            try:
+                context.process_updated_raw_file(p, allow_modify=True)
+            except NotImplementedError:
+                break  # local processing
+            except Exception as e:
+                logger.warning('could not reprocess test entry', entry=p, exc_info=e)
 
 
 class WaveMatrixTestLog(EntryData):

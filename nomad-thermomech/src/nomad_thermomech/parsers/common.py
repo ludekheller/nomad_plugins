@@ -120,4 +120,22 @@ def upsert_test_entry(context, folder_abs, folder_rel, test, logger=None, reproc
         except Exception as e:
             if logger:
                 logger.warning('could not process the test entry', eln_entry=eln_rel, exc_info=e)
+    if changed:
+        _refresh_campaign(context, folder_rel, logger)
     return eln_rel
+
+
+def _refresh_campaign(context, folder_rel, logger=None):
+    """A new or changed test in a campaign folder: reprocess the campaign so it lists the test."""
+    from nomad_thermomech.schema_packages.thermomech import _raw_root, find_campaign
+
+    cand = find_campaign(_raw_root(context), folder_rel)
+    if cand is None:
+        return
+    try:
+        context.process_updated_raw_file(cand, allow_modify=True)
+    except NotImplementedError:
+        pass
+    except Exception as e:
+        if logger:
+            logger.warning('could not reprocess the campaign', campaign=cand, exc_info=e)

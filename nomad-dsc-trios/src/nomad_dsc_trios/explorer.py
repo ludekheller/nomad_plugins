@@ -1,8 +1,9 @@
 """Interactive "explorer" figure (Plotly only, no extra GUI code):
 
 * menu "x" (dropdown):       choose the variable on the x axis
-* y buttons (below the plot, 3 columns): one on/off button per variable, in the colour of
-                             its line - switch on any combination of y variables
+* y buttons (3 columns):     one on/off button per variable in the colour of its line,
+                             filled = shown - switch on any combination of y variables
+Everything sits below the plot, so the plot keeps the full width.
 * menu "y scale" (dropdown): raw values | normalised by max |value| (0…1, or −1…1 if
                              negative values) | min-max (0…1) - to compare variables of
                              different size on one axis
@@ -70,52 +71,62 @@ def explorer_figure(groups, variables, x, ys, title='Explorer', max_points=3000,
     traces = [{'type': 'scattergl', 'mode': 'lines', 'name': label[k], 'x': xs, 'y': _rounded(cols[k], digits),
                'line': {'color': color[k]}, 'visible': k in ys} for k in keys]
 
+    # layout (px): plot area, then below it x tick labels + axis title, menu row, y buttons
+    plot_h, top, axis_space = 400, 30, 60
+    menu_row = axis_space + 15          # offset of the x / y-scale dropdowns below the plot
+    y_label = menu_row + 45             # "y (click to switch on/off):"
+    y_first = y_label + 22              # first row of y buttons
+    rows = int(np.ceil(len(keys) / BUTTON_COLUMNS))
+    bottom = y_first + rows * BUTTON_ROW + 10
+    below = lambda px: -px / plot_h  # noqa: E731  (paper coordinates below the plot area)
+
     menus = [
         {  # x variable
             'buttons': [{'label': lab, 'method': 'update',
                          'args': [{'x': [_rounded(cols[k], digits)]}, {'xaxis.title.text': lab}]}
                         for k, lab in variables],
-            'direction': 'down', 'active': keys.index(x), 'x': 0.03, 'xanchor': 'left', 'y': 1.2, 'yanchor': 'top',
+            'direction': 'down', 'active': keys.index(x),
+            'x': 0.04, 'xanchor': 'left', 'y': below(menu_row), 'yanchor': 'top',
         },
         {  # y scale
             'buttons': [{'label': lab, 'method': 'update',
                          'args': [{'y': [_rounded(_scaled(cols[k], mode), digits) for k in keys]},
                                   {'yaxis.title.text': y_title[mode]}]} for mode, lab in scales],
-            'direction': 'down', 'active': 0, 'x': 0.55, 'xanchor': 'left', 'y': 1.2, 'yanchor': 'top',
+            'direction': 'down', 'active': 0,
+            'x': 0.6, 'xanchor': 'left', 'y': below(menu_row), 'yanchor': 'top',
         },
     ]
-    rows = int(np.ceil(len(keys) / BUTTON_COLUMNS))
-    plot_h = 400  # height of the plotting area in px
-    top, below_axis = 120, 95  # px: menus above the plot; x tick labels + axis title below it
-    bottom = below_axis + 25 + rows * BUTTON_ROW
-    height = top + plot_h + bottom
-    for i, k in enumerate(keys):  # one on/off button per y variable (toggle: args / args2)
+    for i, k in enumerate(keys):  # one on/off button per y variable: filled = on, white = off
         row, col = divmod(i, BUTTON_COLUMNS)
+        m = 2 + i  # index of this menu in layout.updatemenus
+        on = {f'updatemenus[{m}].bgcolor': color[k], f'updatemenus[{m}].font.color': '#ffffff'}
+        off = {f'updatemenus[{m}].bgcolor': '#ffffff', f'updatemenus[{m}].font.color': color[k]}
         menus.append({
-            'type': 'buttons', 'showactive': True, 'active': 0 if k in ys else -1,
-            'buttons': [{'label': label[k], 'method': 'restyle',
-                         'args': [{'visible': True}, [i]], 'args2': [{'visible': False}, [i]]}],
-            'font': {'color': color[k], 'size': 11},
-            'x': col / BUTTON_COLUMNS, 'xanchor': 'left',
-            'y': -(below_axis + 25 + row * BUTTON_ROW) / plot_h, 'yanchor': 'top',
+            'type': 'buttons', 'showactive': False, 'active': 0 if k in ys else -1,
+            'buttons': [{'label': label[k], 'method': 'update',
+                         'args': [{'visible': True}, on, [i]], 'args2': [{'visible': False}, off, [i]]}],
+            'bgcolor': color[k] if k in ys else '#ffffff', 'bordercolor': color[k],
+            'font': {'color': '#ffffff' if k in ys else color[k], 'size': 11},
+            'x': col / BUTTON_COLUMNS, 'xanchor': 'left', 'y': below(y_first + row * BUTTON_ROW), 'yanchor': 'top',
             'pad': {'t': 0, 'b': 0, 'l': 0, 'r': 0},
         })
 
     return {
         'data': traces,
         'layout': {
-            'title': {'text': title},
-            'height': height,
+            'height': top + plot_h + bottom,
             'xaxis': {'title': {'text': label[x]}},
             'yaxis': {'title': {'text': label[ys[0]] if len(ys) == 1 else y_title['raw']}},
             'margin': {'t': top, 'b': bottom, 'r': 30},
             'showlegend': False,  # the y buttons, coloured like their lines, are the legend
             'updatemenus': menus,
             'annotations': [
-                {'text': 'x:', 'x': 0.0, 'xref': 'paper', 'y': 1.18, 'yref': 'paper', 'showarrow': False},
-                {'text': 'y scale:', 'x': 0.47, 'xref': 'paper', 'y': 1.18, 'yref': 'paper', 'showarrow': False},
+                {'text': 'x:', 'x': 0.0, 'xref': 'paper', 'xanchor': 'left', 'y': below(menu_row + 5),
+                 'yref': 'paper', 'yanchor': 'top', 'showarrow': False},
+                {'text': 'y scale:', 'x': 0.5, 'xref': 'paper', 'xanchor': 'left', 'y': below(menu_row + 5),
+                 'yref': 'paper', 'yanchor': 'top', 'showarrow': False},
                 {'text': 'y (click to switch on/off):', 'x': 0.0, 'xref': 'paper', 'xanchor': 'left',
-                 'y': -(below_axis + 4) / plot_h, 'yref': 'paper', 'yanchor': 'top', 'showarrow': False},
+                 'y': below(y_label), 'yref': 'paper', 'yanchor': 'top', 'showarrow': False},
             ],
         },
     }

@@ -71,8 +71,10 @@ def test_json_creates_and_fills_dsc_entry(upload):
     # one on/off button per y variable: on = args, off = args2; only heat flow active at start
     assert [m['buttons'][0]['label'] for m in y_buttons] == ['Time (s)', 'Temperature (°C)', 'Heat flow (W/g)']
     assert [m['active'] for m in y_buttons] == [-1, -1, 0]
-    assert y_buttons[1]['buttons'][0]['args'] == [{'visible': True}, [1]]
-    assert y_buttons[1]['buttons'][0]['args2'] == [{'visible': False}, [1]]
+    on, off = y_buttons[1]['buttons'][0]['args'], y_buttons[1]['buttons'][0]['args2']
+    assert on[0] == {'visible': True} and on[2] == [1] and on[1]['updatemenus[3].font.color'] == '#ffffff'
+    assert off[0] == {'visible': False} and off[2] == [1] and off[1]['updatemenus[3].bgcolor'] == '#ffffff'
+    assert ex['layout']['updatemenus'][0]['y'] < 0  # menus below the plot
     y_max = scale_menu['buttons'][1]['args'][0]['y'][2]  # heat flow, normalised by max |value|
     vals = [v for v in y_max if v is not None]
     assert max(abs(v) for v in vals) == pytest.approx(1.0) and min(vals) < 0  # −1…1 (negative values)

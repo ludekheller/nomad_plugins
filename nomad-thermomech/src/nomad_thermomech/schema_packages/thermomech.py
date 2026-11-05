@@ -486,7 +486,7 @@ class ThermomechTest(PlotSection, EntryData):
             groups = [('all data', cols)]
         x = 'strain_dic' if 'strain_dic' in cols else 'strain_dic_analog' if 'strain_dic_analog' in cols else 'time'
         return explorer_figure(groups, EXPLORER_VARIABLES, x, ['stress'],
-                               title='Explorer: choose x, click legend for y variables, choose y scale')
+                               title='Explorer: x menu, y on/off buttons (below), y scale menu')
 
 
 def _raw_root(context):

@@ -211,7 +211,7 @@ class DSC_SMA(PlotSection, EntryData):
                                                   'Heat Flow (Normalized)_W/g': s['heat_flow_normalized']})
                         for i, s in enumerate(data['measurement']['segments'])]
         fig = explorer_figure(explorer, EXPLORER_VARIABLES, 'Temperature_°C', ['Heat Flow (Normalized)_W/g'],
-                              title='Explorer: choose x, click legend for y variables, choose y scale')
+                              title='Explorer: x menu, y on/off buttons (below), y scale menu')
         if fig:
             self.figures.append(PlotlyFigure(label='Explorer (choose x and y)', figure=fig))
 

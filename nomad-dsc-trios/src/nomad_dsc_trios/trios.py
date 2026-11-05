@@ -101,6 +101,7 @@ def overlay_figure(ramps):
             'title': {'text': 'All ramps - heat flow vs temperature (exotherm up)'},
             'xaxis': {'title': {'text': 'Temperature (°C)'}},
             'yaxis': {'title': {'text': 'Heat flow (W/g), exotherm up'}},
+            'showlegend': True,  # NOMAD's default template hides legends
             'legend': {'title': {'text': 'ramp'}},
         },
     }

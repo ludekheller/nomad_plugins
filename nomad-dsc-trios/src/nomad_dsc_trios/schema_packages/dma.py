@@ -154,7 +154,7 @@ class DMA_TRIOS(PlotSection, EntryData):
                     data.append({'type': 'scattergl', 'mode': 'lines', 'name': f'{i + 1}: {s["name"]}', 'x': x, 'y': y})
             if data:
                 figs.append(PlotlyFigure(label=label, figure={'data': data, 'layout': {
-                    'title': {'text': f'{label} (one line per step)'},
+                    'title': {'text': f'{label} (one line per step)'}, 'showlegend': True,
                     'xaxis': {'title': {'text': xt}}, 'yaxis': {'title': {'text': yt}}}}))
         order = {k: i for i, k in enumerate(EXPLORER_FIRST)}
         variables = sorted(variables, key=lambda kv: order.get(kv[0], len(order)))
@@ -162,7 +162,7 @@ class DMA_TRIOS(PlotSection, EntryData):
         x = 'Temperature_°C' if 'Temperature_°C' in keys else keys[0]
         ys = [y for y in ('Strain_%', 'Stress_MPa') if y in keys][:1] or keys[1:2]
         fig = explorer_figure(explorer, variables, x, ys,
-                              title='Explorer: choose x, click legend for y variables, choose y scale')
+                              title='Explorer: x menu, y on/off buttons (below), y scale menu')
         if fig:
             figs.append(PlotlyFigure(label='Explorer (choose x and y)', figure=fig))
         return figs

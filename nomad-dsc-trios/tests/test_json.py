@@ -64,10 +64,15 @@ def test_json_creates_and_fills_dsc_entry(upload):
     ex = d.figures[1].figure
     assert d.figures[1].label == 'Explorer (choose x and y)'
     assert [t['name'] for t in ex['data']] == ['Time (s)', 'Temperature (°C)', 'Heat flow (W/g)']  # one line per y
-    assert [t['visible'] for t in ex['data']] == ['legendonly', 'legendonly', True]
-    x_menu, scale_menu = ex['layout']['updatemenus']
+    assert [t['visible'] for t in ex['data']] == [False, False, True]
+    x_menu, scale_menu, *y_buttons = ex['layout']['updatemenus']
     assert x_menu['buttons'][x_menu['active']]['label'] == 'Temperature (°C)'
     assert len(x_menu['buttons'][0]['args'][0]['x']) == 1  # one x array shared by all lines
+    # one on/off button per y variable: on = args, off = args2; only heat flow active at start
+    assert [m['buttons'][0]['label'] for m in y_buttons] == ['Time (s)', 'Temperature (°C)', 'Heat flow (W/g)']
+    assert [m['active'] for m in y_buttons] == [-1, -1, 0]
+    assert y_buttons[1]['buttons'][0]['args'] == [{'visible': True}, [1]]
+    assert y_buttons[1]['buttons'][0]['args2'] == [{'visible': False}, [1]]
     y_max = scale_menu['buttons'][1]['args'][0]['y'][2]  # heat flow, normalised by max |value|
     vals = [v for v in y_max if v is not None]
     assert max(abs(v) for v in vals) == pytest.approx(1.0) and min(vals) < 0  # −1…1 (negative values)

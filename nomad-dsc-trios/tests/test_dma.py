@@ -70,3 +70,25 @@ def test_dsc_json_still_creates_dsc_entry(tmp_path):
     shutil.copy(DATA / 'niti_slm_hex74121.json', tmp_path / 'dsc.json')
     process(tmp_path / 'dsc.json')
     assert json.loads((tmp_path / 'dsc.archive.json').read_text())['data']['m_def'].endswith('.DSC_SMA')
+
+
+def test_dma_oscillation_temperature_ramp(tmp_path):
+    """Reduced copy of a DMA 850 actuation test: iso-stress cooling, stress ramps, then heating
+    to 200 °C in oscillation (2 Hz, 8 MPa) - storage/loss modulus and tan δ, no static strain."""
+    name = 'niti5_dma_oscillation.json'
+    shutil.copy(DATA / name, tmp_path / name)
+    process(tmp_path / name)
+    a = process(tmp_path / 'niti5_dma_oscillation.archive.json')
+    d = a.data
+    assert d.instrument_settings.procedure_name == 'NiTi_actuation_DMA'
+    osc = d.segments[-1]
+    assert osc.name == 'Temperature Ramp - 5' and osc.strain is None  # TRIOS records no static strain here
+    assert osc.storage_modulus.magnitude.max() == pytest.approx(54740.75, rel=1e-4)
+    assert osc.tan_delta.max() == pytest.approx(0.053, abs=1e-3)
+    assert osc.frequency.magnitude.mean() == pytest.approx(2.0, abs=0.01)
+    assert osc.oscillation_stress.magnitude.mean() == pytest.approx(8.0, abs=0.05)
+    labels = [f.label for f in d.figures]
+    assert labels == ['Stress vs strain', 'Strain vs temperature', 'Length vs temperature',
+                      'Modulus and tan δ vs temperature', 'Explorer (choose x and y)']
+    mod = d.figures[3].figure
+    assert {t['yaxis'] for t in mod['data']} == {'y', 'y2'}  # tan δ on the right axis

@@ -28,6 +28,10 @@ SEGMENT_COLUMNS = {
     'loss_modulus': ('Loss modulus_MPa', 'MPa'),
     'tan_delta': ('Tan(delta)', None),
     'frequency': ('Frequency_Hz', 'Hz'),
+    'complex_modulus': ('Complex modulus_MPa', 'MPa'),
+    'phase_angle': ('Phase angle_°', '°'),
+    'oscillation_stress': ('Oscillation stress_MPa', 'MPa'),
+    'oscillation_strain': ('Oscillation strain_%', '%'),
 }
 
 

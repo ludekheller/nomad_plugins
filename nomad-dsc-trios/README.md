@@ -47,8 +47,12 @@ A TRIOS JSON export of a **DMA** run (DMA 850 ...; `.json` or `.json.gz`) create
   instrument, procedure name and steps;
 * one segment per results step with time, temperature, set point, strain, stress, force,
   displacement, length, modulus (and storage/loss modulus, tan δ, frequency if present);
-* plots: stress vs strain, strain vs temperature (one line per step) and the explorer with
-  all numeric channels of the export.
+* oscillation steps: storage / loss / complex modulus, tan δ, phase angle, frequency,
+  oscillation stress and strain amplitude;
+* plots: stress vs strain, strain vs temperature (one line per step); length vs temperature
+  if a step has no static strain (TRIOS records none in oscillation steps); storage/loss
+  modulus and tan δ vs temperature for oscillation data; and the explorer with all numeric
+  channels of the export.
 
 Fill in material, composition, processing history and the test description in the GUI.
 

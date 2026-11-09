@@ -83,6 +83,10 @@ class DMA_Segment(ArchiveSection):
     loss_modulus = _arr('megapascal')
     tan_delta = _arr()
     frequency = _arr('hertz')
+    complex_modulus = _arr('megapascal')
+    phase_angle = _arr('degree')
+    oscillation_stress = _arr('megapascal', description='amplitude')
+    oscillation_strain = _arr(description='amplitude, %')
 
 
 class DMA_TRIOS(PlotSection, EntryData):
@@ -156,6 +160,34 @@ class DMA_TRIOS(PlotSection, EntryData):
                 figs.append(PlotlyFigure(label=label, figure={'data': data, 'layout': {
                     'title': {'text': f'{label} (one line per step)'}, 'showlegend': True,
                     'xaxis': {'title': {'text': xt}}, 'yaxis': {'title': {'text': yt}}}}))
+        # steps without static strain (e.g. oscillation steps): length shows the actuation
+        if any(s.get('length') and s.get('temperature') and not s.get('strain') for s in segments):
+            data = []
+            for i, s in enumerate(segments):
+                if s.get('length') and s.get('temperature'):
+                    x, y = thin(s['temperature'], s['length'])
+                    data.append({'type': 'scattergl', 'mode': 'lines', 'name': f'{i + 1}: {s["name"]}', 'x': x, 'y': y})
+            figs.append(PlotlyFigure(label='Length vs temperature', figure={'data': data, 'layout': {
+                'title': {'text': 'Length vs temperature (one line per step)'}, 'showlegend': True,
+                'xaxis': {'title': {'text': 'Temperature (°C)'}}, 'yaxis': {'title': {'text': 'Length (mm)'}}}}))
+        # oscillation: storage / loss modulus (left axis) and tan δ (right axis) vs temperature
+        data = []
+        for i, s in enumerate(segments):
+            if not (s.get('temperature') and (s.get('storage_modulus') or s.get('tan_delta'))):
+                continue
+            for q, name, axis, dash in (('storage_modulus', "E'", 'y', 'solid'), ('loss_modulus', "E''", 'y', 'dot'),
+                                        ('tan_delta', 'tan δ', 'y2', 'dash')):
+                if s.get(q):
+                    x, y = thin(s['temperature'], s[q])
+                    data.append({'type': 'scattergl', 'mode': 'lines', 'name': f'{name} ({i + 1}: {s["name"]})',
+                                 'x': x, 'y': y, 'yaxis': axis, 'line': {'dash': dash}})
+        if data:
+            figs.append(PlotlyFigure(label="Modulus and tan δ vs temperature", figure={'data': data, 'layout': {
+                'title': {'text': "Storage modulus E', loss modulus E'' and tan δ vs temperature"},
+                'showlegend': True, 'legend': {'x': 1.1},
+                'xaxis': {'title': {'text': 'Temperature (°C)'}},
+                'yaxis': {'title': {'text': 'Modulus (MPa)'}},
+                'yaxis2': {'title': {'text': 'tan δ'}, 'overlaying': 'y', 'side': 'right'}}}))
         order = {k: i for i, k in enumerate(EXPLORER_FIRST)}
         variables = sorted(variables, key=lambda kv: order.get(kv[0], len(order)))
         keys = [k for k, _ in variables]

@@ -19,7 +19,7 @@ from nomad_walterbai.explorer import explorer_figure
 m_package = SchemaPackage(name='Walter+Bai (UTTRMO) thermomechanical tests')
 
 MAX_PLOT_POINTS = 6000
-MAP_MAX_FRAMES = 1500  # strain map: frames kept (x resolution)
+MAP_MAX_CELLS = 30000  # strain map: frames x segments kept (flat lists; NOMAD mangles 2D z)
 LOCAL_MAX_POINTS = 1500  # local strain vs time: points per line
 
 # machine column header -> (quantity, unit)
@@ -201,11 +201,14 @@ class WalterBaiTest(PlotSection, EntryData):
 
         figs = []
         if dic is not None:  # strain map: time on x, position along the specimen on y, colour = local strain
-            st = thin(len(dic['time']), MAP_MAX_FRAMES)
-            z = dic['local_strain'][::st].T
+            n_seg = len(dic['segments'])
+            st = thin(len(dic['time']), max(100, MAP_MAX_CELLS // n_seg))
+            t_map, pos = dic['time'][::st], dic['segment_position']
+            strain = dic['local_strain'][::st]  # frames x segments
             figs.append(PlotlyFigure(label='DIC strain map', figure={
-                'data': [{'type': 'heatmap', 'x': clean(dic['time'][::st]), 'y': clean(dic['segment_position']),
-                          'z': [clean(row) for row in z], 'colorscale': 'Viridis',
+                'data': [{'type': 'heatmap',  # flat x / y / z: one entry per cell
+                          'x': clean(np.repeat(t_map, n_seg)), 'y': clean(np.tile(pos, len(t_map))),
+                          'z': clean(strain.ravel()), 'colorscale': 'Viridis',
                           'colorbar': {'title': {'text': 'Strain (%)'}},
                           'hovertemplate': 't = %{x} s<br>position = %{y} mm<br>strain = %{z} %<extra></extra>'}],
                 'layout': {'title': {'text': 'Local strain (1D DIC): time × position along the specimen'},

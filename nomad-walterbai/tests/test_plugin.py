@@ -97,7 +97,8 @@ def test_machine_and_dic(folder):
     labels = [f.label for f in d.figures]
     assert labels == ['DIC strain map', 'Stress vs strain', 'Local strains vs time', 'Explorer (choose x and y)']
     hm = d.figures[0].figure['data'][0]
-    assert hm['type'] == 'heatmap' and len(hm['y']) == 57 and len(hm['z']) == 57 and len(hm['z'][0]) == len(hm['x'])
+    assert hm['type'] == 'heatmap' and len(hm['x']) == len(hm['y']) == len(hm['z'])  # flat lists
+    assert len(set(hm['y'])) == 57 and len(hm['z']) <= 30000 + 57
     assert [t['name'] for t in d.figures[1].figure['data']] == ['machine strain', 'DIC strain T102–T159']
 
 

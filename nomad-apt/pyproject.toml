@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nomad-apt"
-version = "0.3.0"
+version = "0.4.0"
 description = "NOMAD plugin: atom probe tomography (CAMECA LEAP) runs - raw files, reconstructions (.pos/.epos/.apt) and range files (.rrng/.rng)"
 readme = "README.md"
 requires-python = ">=3.10"

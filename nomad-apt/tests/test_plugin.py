@@ -94,7 +94,7 @@ def test_files_in_any_order(folder):
     assert set(comp) == {'Ni', 'Ti', 'O'} and abs(sum(comp.values()) - 100) < 1e-6
     labels = [f.label for f in a.data.figures]
     for lab in ('Mass spectrum', 'Composition', 'Composition profile (depth)', '2-D maps x-y',
-                '2-D maps x-depth', 'Mass spectrum vs depth', 'Evaporation vs depth', '3-D atom map (sample)',
+                '2-D maps x-depth', 'Mass spectrum vs depth', 'Evaporation vs depth', '3-D atom map', '3-D map with cross-sections',
                 'Voltage history', 'Detector hit map', 'Explorer: depth profile (choose x and y)'):
         assert lab in labels, lab
     prof = r.depth_profile

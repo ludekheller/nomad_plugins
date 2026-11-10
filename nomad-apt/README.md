@@ -28,7 +28,13 @@ the title shown in NOMAD comes from the `.xml`. Values typed in by hand are neve
 * **2-D maps x-y and x-depth** – projections; menu: all ions, or per element at.% / atoms per cell
 * **Mass spectrum vs depth** – log counts (evaporation stability, background)
 * **Evaporation vs depth** – ions per slice and unranged fraction
-* **3-D atom map** – random 20 000 ions, coloured by ion
+* **3-D atom map** – sample per ion (up to 8 000 each; minor ions such as Ga complete), on/off
+  buttons per ion above the plot (filled = shown), *all on* / *all off*
+* **3-D map with cross-sections** – x-z section (4 nm slab) with its at.% profile along depth on
+  the left, 3-D map with both section planes, x-y slice (2 nm slab) with at.% profiles along x
+  (above) and y (right). Two sliders move the x-y slice in depth and the x-z section in y
+  (15 positions each); all panels follow. Profiles from all ions in the slab, points sampled
+  (up to 1 500 per ion and slab). Same ion buttons on top. Best viewed full screen (⛶).
 * **Voltage history**, **detector hit map**, multiple-hit fraction – when the file has these channels
 
 Without a range file: mass spectrum, explorer (ions per slice), maps of all ions, spectrum vs

@@ -194,24 +194,266 @@ def explorer(a):
                            title='Explorer: depth profile - x menu, y on/off buttons, y scale menu')
 
 
-def atom_map(a, colors):
+def _on_text(color):
+    """Text colour on a filled button: dark on light colours (e.g. yellow), white otherwise."""
+    try:
+        r, g, b = (int(color.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    except ValueError:
+        return '#ffffff'
+    return '#222222' if 0.299 * r + 0.587 * g + 0.114 * b > 0.6 else '#ffffff'
+
+
+def _off_text(color):
+    """Text colour on an empty (white) button: the colour itself unless too light to read."""
+    return '#8a7a00' if _on_text(color) == '#222222' else color
+
+
+def toggle_buttons(items, y_of_row, columns=6, menu0=0):
+    """On/off buttons in rows above a plot. items: [(label, colour, trace indices, on)].
+    Filled button = shown. The first slot holds 'all on' / 'all off'. Returns updatemenus."""
+    def style(i, on):
+        m = menu0 + 1 + i
+        c = items[i][1]
+        return {f'updatemenus[{m}].bgcolor': c if on else '#ffffff',
+                f'updatemenus[{m}].font.color': _on_text(c) if on else _off_text(c)}
+
+    every = sorted({t for it in items for t in it[2]})
+
+    def all_(on):
+        lay = {}
+        for i in range(len(items)):
+            lay.update(style(i, on))
+        return [{'visible': on}, lay, every]
+
+    pad = {'t': 0, 'b': 0, 'l': 0, 'r': 0}
+    menus = [{'type': 'buttons', 'direction': 'left', 'showactive': False, 'x': 0, 'xanchor': 'left',
+              'y': y_of_row(0), 'yanchor': 'top', 'pad': pad, 'font': {'size': 11},
+              'buttons': [{'label': 'all on', 'method': 'update', 'args': all_(True)},
+                          {'label': 'all off', 'method': 'update', 'args': all_(False)}]}]
+    for i, (label, color, traces, on) in enumerate(items):
+        r, c = divmod(i + 1, columns)
+        menus.append({'type': 'buttons', 'showactive': False, 'active': 0 if on else -1,
+                      'buttons': [{'label': label, 'method': 'update',
+                                   'args': [{'visible': True}, style(i, True), traces],
+                                   'args2': [{'visible': False}, style(i, False), traces]}],
+                      'bgcolor': color if on else '#ffffff', 'bordercolor': color,
+                      'font': {'color': _on_text(color) if on else _off_text(color), 'size': 11},
+                      'x': c / columns, 'xanchor': 'left', 'y': y_of_row(r), 'yanchor': 'top', 'pad': pad})
+    return menus
+
+
+def _sample_traces(a, colors):
+    """3-D traces of the per-ion sample: [(ion, label, trace dict, on)]."""
     s = a['sample']
     order = list(sorted(a['ion_counts'], key=lambda i: -a['ion_counts'][i])) + ['unranged']
-    data = []
+    out = []
     for ion in order:
         sel = s['ion'] == ion
         if not sel.any():
             continue
-        data.append({'type': 'scatter3d', 'mode': 'markers', 'name': f'{ion} ({int(sel.sum())})',
-                     'x': r6(s['x'][sel]), 'y': r6(s['y'][sel]), 'z': r6(s['z'][sel]),
-                     'marker': {'size': 1.5, 'color': colors.get(ion, '#bbbbbb'),
-                                'opacity': 0.4 if ion == 'unranged' else 0.8},
-                     'visible': 'legendonly' if ion == 'unranged' and len(order) > 1 else True})
-    return {'data': data, 'layout': {
-        'title': {'text': f'Atom map: random sample of {len(s["x"]):,} ions (click legend to hide)'},
-        'showlegend': True, 'height': 650,
+        k, tot = int(sel.sum()), s.get('total', {}).get(ion, int(sel.sum()))
+        label = f'{ion} (all {k:,})' if k >= tot else f'{ion} ({k:,} of {tot:,})'
+        on = ion != 'unranged' or len(order) == 1
+        out.append((ion, label, {'type': 'scatter3d', 'mode': 'markers', 'name': label,
+                                 'x': r6(s['x'][sel], 5), 'y': r6(s['y'][sel], 5), 'z': r6(s['z'][sel], 5),
+                                 'marker': {'size': 1.5, 'color': colors.get(ion, '#999999'),
+                                            'opacity': 0.4 if ion == 'unranged' else 0.8},
+                                 'visible': on, 'hoverinfo': 'name'}, on))
+    return out
+
+
+def atom_map(a, colors, columns=6, row=28):
+    """3-D map of a sample per ion (minor ions complete); on/off buttons above the plot."""
+    tr = _sample_traces(a, colors)
+    rows = int(np.ceil((len(tr) + 1) / columns))
+    plot_h, top = 640, 30 + rows * row
+    items = [(lab, colors.get(ion, '#999999'), [i], on) for i, (ion, lab, _, on) in enumerate(tr)]
+    menus = toggle_buttons(items, lambda r: 1 + (top - 6 - r * row) / plot_h, columns)
+    return {'data': [t for _, _, t, _ in tr], 'layout': {
+        'height': plot_h + top + 10, 'margin': {'t': top, 'b': 10, 'l': 10, 'r': 10}, 'showlegend': False,
+        'updatemenus': menus,
         'scene': {'aspectmode': 'data', 'xaxis': {'title': {'text': 'x (nm)'}},
                   'yaxis': {'title': {'text': 'y (nm)'}}, 'zaxis': {'title': {'text': 'z (nm)'}}}}}
+
+
+def cross_sections(a, colors, columns=6, row=28):
+    """3-D map with two section planes; x-z section with z profile (left), x-y slice with x and
+    y profiles (below the 3-D map). Two sliders move the planes; ion buttons switch species."""
+    cs = a['sections']
+    ranged = bool(a['ion_order'])
+    tr = [t for t in _sample_traces(a, colors)]
+    ions = [ion for ion, *_ in tr if ion != 'unranged'] if ranged else ['unranged']
+    els = a['element_order'] if ranged else []
+    R2E, steps = a['R2E'], cs['steps']
+    rng_ion = np.array([r for r in a.get('range_ions', [])] + ['unranged'], dtype=object)
+    (x0, x1), (y0, y1), (z0, z1) = a['extent']['x'], a['extent']['y'], a['extent']['z']
+
+    data = []
+    T3D = list(range(len(tr)))
+    data += [t for _, _, t, _ in tr]
+
+    def pts(key, s, ion):
+        p = cs[key]
+        sel = (p[:, 0] == s) & (rng_ion[p[:, 1].astype(int)] == ion) if ranged else (p[:, 0] == s)
+        return r6(p[sel, 2], 4), r6(p[sel, 3], 4)
+
+    s0 = steps // 2
+    Txz, Txy = [], []
+    for ion in ions:
+        x, d = pts('points_xz', s0, ion)
+        Txz.append(len(data))
+        data.append({'type': 'scattergl', 'mode': 'markers', 'name': ion, 'x': x, 'y': d, 'xaxis': 'x', 'yaxis': 'y',
+                     'marker': {'size': 3, 'color': colors.get(ion, '#999999'), 'opacity': 0.7}, 'hoverinfo': 'name'})
+    for ion in ions:
+        x, y = pts('points_xy', s0, ion)
+        Txy.append(len(data))
+        data.append({'type': 'scattergl', 'mode': 'markers', 'name': ion, 'x': x, 'y': y, 'xaxis': 'x4',
+                     'yaxis': 'y4', 'marker': {'size': 3, 'color': colors.get(ion, '#999999'), 'opacity': 0.7},
+                     'hoverinfo': 'name'})
+
+    # profiles: at.% per element (with ranges) or ions per bin (without)
+    def prof(P, s):  # P: (steps, labels, bins) -> (series, bins)
+        if not ranged:
+            return P[s].sum(axis=0, keepdims=True).astype(float)
+        at, _ = atomic_percent((R2E.T @ P[s]).T)  # (bins, elements)
+        return at.T
+
+    series = els if ranged else ['ions']
+    ecol = element_colors(a) if ranged else {'ions': '#333333'}
+    unit = 'at.%' if ranged else 'ions per nm'
+    Pz, Px, Py = [], [], []
+    for k, e in enumerate(series):
+        col = colors.get(e, ecol[e])
+        Pz.append(len(data))
+        data.append({'type': 'scatter', 'mode': 'lines', 'name': e, 'x': r6(prof(cs['P_d'], s0)[k], 4),
+                     'y': r6(cs['bd'], 4), 'xaxis': 'x2', 'yaxis': 'y2', 'line': {'color': col, 'width': 1.5}})
+        Px.append(len(data))
+        data.append({'type': 'scatter', 'mode': 'lines', 'name': e, 'x': r6(cs['bx'], 4),
+                     'y': r6(prof(cs['P_x'], s0)[k], 4), 'xaxis': 'x3', 'yaxis': 'y3',
+                     'line': {'color': col, 'width': 1.5}})
+        Py.append(len(data))
+        data.append({'type': 'scatter', 'mode': 'lines', 'name': e, 'x': r6(prof(cs['P_y'], s0)[k], 4),
+                     'y': r6(cs['by'], 4), 'xaxis': 'x5', 'yaxis': 'y5', 'line': {'color': col, 'width': 1.5}})
+
+    # section planes in 3-D and position markers in the 2-D panels
+    def zplane(s):
+        zc = float(z1 - cs['depths'][s])
+        return {'x': [x0, x1, x1, x0], 'y': [y0, y0, y1, y1], 'z': [zc] * 4}
+
+    def yplane(s):
+        yc = float(cs['ys'][s])
+        return {'x': [x0, x1, x1, x0], 'y': [yc] * 4, 'z': [z0, z0, z1, z1]}
+
+    mesh = {'type': 'mesh3d', 'i': [0, 0], 'j': [1, 2], 'k': [2, 3], 'opacity': 0.25, 'hoverinfo': 'skip',
+            'showscale': False}
+    PZ = len(data)
+    data.append({**mesh, **zplane(s0), 'color': '#e377c2', 'name': 'x-y slice'})
+    PY = len(data)
+    data.append({**mesh, **yplane(s0), 'color': '#17becf', 'name': 'x-z section'})
+    line = {'type': 'scatter', 'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False}
+    LXZ = len(data)  # depth of the x-y slice, drawn in the x-z section
+    data.append({**line, 'x': [x0, x1], 'y': [float(cs['depths'][s0])] * 2, 'xaxis': 'x', 'yaxis': 'y',
+                 'line': {'color': '#e377c2', 'dash': 'dash'}})
+    LZP = len(data)  # same, in the z profile
+    data.append({**line, 'x': [0, 100 if ranged else None], 'y': [float(cs['depths'][s0])] * 2, 'xaxis': 'x2',
+                 'yaxis': 'y2', 'line': {'color': '#e377c2', 'dash': 'dash'}})
+    LXY = len(data)  # y of the x-z section, drawn in the x-y slice
+    data.append({**line, 'x': [x0, x1], 'y': [float(cs['ys'][s0])] * 2, 'xaxis': 'x4', 'yaxis': 'y4',
+                 'line': {'color': '#17becf', 'dash': 'dash'}})
+    if not ranged:
+        data[LZP]['x'] = [0, float(prof(cs['P_d'], s0).max() or 1)]
+
+    def step_xy(s):  # slider 1: depth of the x-y slice
+        upd = {'x': [], 'y': [], 'z': []}
+        idx = []
+        for i, ion in zip(Txy, ions):
+            x, y = pts('points_xy', s, ion)
+            upd['x'].append(x), upd['y'].append(y), upd['z'].append(None), idx.append(i)
+        p_x, p_y = prof(cs['P_x'], s), prof(cs['P_y'], s)
+        for k in range(len(series)):
+            upd['x'].append(r6(cs['bx'], 4)), upd['y'].append(r6(p_x[k], 4)), upd['z'].append(None)
+            upd['x'].append(r6(p_y[k], 4)), upd['y'].append(r6(cs['by'], 4)), upd['z'].append(None)
+            idx += [Px[k], Py[k]]
+        zp = zplane(s)
+        upd['x'].append(zp['x']), upd['y'].append(zp['y']), upd['z'].append(zp['z'])
+        d = float(cs['depths'][s])
+        upd['x'] += [[x0, x1], data[LZP]['x']]
+        upd['y'] += [[d, d], [d, d]]
+        upd['z'] += [None, None]
+        idx += [PZ, LXZ, LZP]
+        return [upd, idx]
+
+    def step_xz(s):  # slider 2: y of the x-z section
+        upd = {'x': [], 'y': [], 'z': []}
+        idx = []
+        for i, ion in zip(Txz, ions):
+            x, d = pts('points_xz', s, ion)
+            upd['x'].append(x), upd['y'].append(d), upd['z'].append(None), idx.append(i)
+        p_d = prof(cs['P_d'], s)
+        for k in range(len(series)):
+            upd['x'].append(r6(p_d[k], 4)), upd['y'].append(r6(cs['bd'], 4)), upd['z'].append(None)
+            idx.append(Pz[k])
+        yp = yplane(s)
+        upd['x'].append(yp['x']), upd['y'].append(yp['y']), upd['z'].append(yp['z'])
+        yc = float(cs['ys'][s])
+        upd['x'].append([x0, x1]), upd['y'].append([yc, yc]), upd['z'].append(None)
+        idx += [PY, LXY]
+        return [upd, idx]
+
+    # layout (px): buttons, sliders on top; panels below
+    items = []
+    for i, (ion, lab, _, on) in enumerate(tr):
+        traces = [T3D[i]]
+        if ion in ions:
+            j = ions.index(ion)
+            traces += [Txz[j], Txy[j]]
+        if ranged and ion in series:
+            k = series.index(ion)
+            traces += [Pz[k], Px[k], Py[k]]
+        items.append((lab, colors.get(ion, '#999999'), traces, on))
+    rows = int(np.ceil((len(items) + 1) / columns))
+    top = 20 + rows * row + 95
+    H = 1150
+    ph = H - top - 45
+    y_row = lambda r: 1 + (top - 8 - r * row) / ph  # noqa: E731
+    y_slider = 1 + (top - 14 - rows * row) / ph
+    menus = toggle_buttons(items, y_row, columns)
+
+    def slider(label, values, fmt, step_fn, x, color):
+        return {'active': s0, 'x': x, 'len': 0.47, 'y': y_slider, 'yanchor': 'top', 'pad': {'t': 0, 'b': 0},
+                'currentvalue': {'prefix': label, 'font': {'size': 12, 'color': color}},
+                'steps': [{'label': fmt(v), 'method': 'restyle', 'args': step_fn(s)} for s, v in enumerate(values)]}
+
+    sliders = [slider(f'x-y slice ({cs["thickness_xy"]:g} nm thick) at depth ', cs['depths'], lambda v: f'{v:.1f} nm',
+                      step_xy, 0.0, '#e377c2'),
+               slider(f'x-z section ({cs["thickness_xz"]:g} nm thick) at y = ', cs['ys'], lambda v: f'{v:.1f} nm',
+                      step_xz, 0.53, '#17becf')]
+    ax = lambda **kw: {'showgrid': True, 'zeroline': False, **kw}  # noqa: E731
+    layout = {
+        'height': H, 'margin': {'t': top, 'b': 45, 'l': 55, 'r': 15}, 'showlegend': False,
+        'updatemenus': menus, 'sliders': sliders,
+        'xaxis': ax(domain=[0, 0.25], title={'text': 'x (nm)'}),
+        'yaxis': ax(domain=[0, 1], title={'text': 'Depth (nm)'}, autorange='reversed'),
+        'xaxis2': ax(domain=[0.27, 0.37], title={'text': unit}, anchor='y2'),
+        'yaxis2': ax(domain=[0, 1], matches='y', showticklabels=False, anchor='x2'),
+        'xaxis3': ax(domain=[0.43, 0.82], matches='x4', showticklabels=False, anchor='y3'),
+        'yaxis3': ax(domain=[0.36, 0.46], title={'text': unit}, anchor='x3'),
+        'xaxis4': ax(domain=[0.43, 0.82], title={'text': 'x (nm)'}, anchor='y4'),
+        'yaxis4': ax(domain=[0, 0.33], title={'text': 'y (nm)'}, anchor='x4'),
+        'xaxis5': ax(domain=[0.84, 1], title={'text': unit}, anchor='y5'),
+        'yaxis5': ax(domain=[0, 0.33], matches='y4', showticklabels=False, anchor='x5'),
+        'scene': {'domain': {'x': [0.40, 1], 'y': [0.49, 1]}, 'aspectmode': 'data',
+                  'xaxis': {'title': {'text': 'x (nm)'}}, 'yaxis': {'title': {'text': 'y (nm)'}},
+                  'zaxis': {'title': {'text': 'z (nm)'}}},
+        'annotations': [
+            {'text': 'x-z section', 'x': 0, 'y': 1, 'xref': 'paper', 'yref': 'paper', 'xanchor': 'left',
+             'yanchor': 'bottom', 'showarrow': False, 'font': {'color': '#17becf'}},
+            {'text': 'profile along depth', 'x': 0.27, 'y': 1, 'xref': 'paper', 'yref': 'paper', 'xanchor': 'left',
+             'yanchor': 'bottom', 'showarrow': False, 'font': {'size': 10}},
+            {'text': 'x-y slice', 'x': 0.43, 'y': 0.33, 'xref': 'paper', 'yref': 'paper', 'xanchor': 'left',
+             'yanchor': 'bottom', 'showarrow': False, 'font': {'color': '#e377c2'}}],
+    }
+    return {'data': data, 'layout': layout}
 
 
 def voltage(a):
@@ -246,7 +488,9 @@ def build_figures(a, ranges):
         figs.append(('Explorer: depth profile (choose x and y)', ex))
     figs += [('2-D maps x-y', maps(a, 'map_xy', 'y')), ('2-D maps x-depth', maps(a, 'map_xd', 'depth')),
              ('Mass spectrum vs depth', spectrum_vs_depth(a)), ('Evaporation vs depth', evaporation(a)),
-             ('3-D atom map (sample)', atom_map(a, colors))]
+             ('3-D atom map', atom_map(a, colors))]
+    if a.get('sections') is not None:
+        figs.append(('3-D map with cross-sections', cross_sections(a, colors)))
     if 'vdc' in a:
         figs.append(('Voltage history', voltage(a)))
     if a.get('det_hist') is not None:

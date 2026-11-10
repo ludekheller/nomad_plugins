@@ -252,12 +252,12 @@ def _bin(v, lo, hi, nb):
 
 
 def analyse(ions, ranges=None, bin_width=0.05, max_mass=None, n_sample=20000, det_bins=80, seed=0,
-            map_bins=60, depth_slice=None, depth_mass_bin=0.25, depth_mass_max=150.0, depth_mass_slices=60):
+            map_bins=60, per_ion=8000, sections=True, depth_slice=None, depth_mass_bin=0.25, depth_mass_max=150.0, depth_mass_slices=60):
     """Chunked passes over all ions. Returns a plain dict with:
     n_ions; mass spectrum (bin centres, counts); counts per range / ranged ion / element;
     depth (nm from the top of the reconstruction) profile: counts per depth slice and range;
     2-D maps (x-y and x-depth) of counts per range; mass spectrum vs depth (2-D histogram);
-    a random sample of ions for the 3-D view; V_dc history, detector hit map, multiple-hit
+    a sample for the 3-D view (per ion up to `per_ion` ions, so minor elements are complete); V_dc history, detector hit map, multiple-hit
     fraction (when the file has these channels); medians of .apt acquisition channels."""
     n = len(ions)
     if n == 0:
@@ -357,7 +357,7 @@ def analyse(ions, ranges=None, bin_width=0.05, max_mass=None, n_sample=20000, de
     elements = dict(zip(els, (range_counts @ R2E[:-1]).astype(np.int64).tolist())) if els else {}
     out.update(range_counts=range_counts, ion_counts=ion_counts, ion_color=ion_color, ion_comp=ion_comp,
                ion_windows=ion_windows, element_counts=elements, n_ranged=int(range_counts.sum()),
-               ion_order=ions_list, element_order=els)
+               ion_order=ions_list, element_order=els, range_ions=[r['ion'] for r in ranges])
 
     # depth profile (per slice): all ions, unranged, per ion, per element (atoms)
     out['profile'] = {'depth': (np.arange(nd) + 0.5) * dslice, 'slice': dslice, 'ions': prof.sum(axis=1),
@@ -375,14 +375,31 @@ def analyse(ions, ranges=None, bin_width=0.05, max_mass=None, n_sample=20000, de
                          'counts': spec_depth.reshape(nds, nm)}
     out['extent'] = {'x': (x0, x1), 'y': (y0, y1), 'z': (z0, z1), 'depth': depth_total}
 
-    # random sample for the 3-D view
+    # sample for the 3-D view, per ion: up to `per_ion` ions of each ranged ion (minor ones complete)
+    totals = prof.sum(axis=0)  # ions per label (ranges ..., unranged)
+    L2G = _label_groups(ranges)
+    group_total = totals @ L2G  # ions per ion species (+ unranged)
+    cap = np.full(nl, float(per_ion))
+    cap[-1] = per_ion / 2 if len(ranges) else n_sample  # unranged (or all ions when there are no ranges)
+    prob = np.minimum(1.0, cap / np.maximum(L2G @ group_total, 1))
     rng = np.random.default_rng(seed)
-    pick = np.sort(rng.choice(n, size=min(n, n_sample), replace=False))
-    s = ions[pick]
-    lab = _label(np.asarray(s['m'], float), lows, highs)
+    keep_x, keep_y, keep_z, keep_l = [], [], [], []
+    for a_ in range(0, n, CHUNK):
+        c = ions[a_:a_ + CHUNK]
+        m = np.asarray(c['m'], dtype=np.float64)
+        lab = _label(m, lows, highs)
+        k = np.flatnonzero((rng.random(len(m)) < prob[lab]) & np.isfinite(m))
+        keep_x.append(np.asarray(c['x'][k], float))
+        keep_y.append(np.asarray(c['y'][k], float))
+        keep_z.append(np.asarray(c['z'][k], float))
+        keep_l.append(lab[k])
+    lab = np.concatenate(keep_l)
     label = np.array([ranges[i]['ion'] if i < len(ranges) else 'unranged' for i in lab], dtype=object)
-    out['sample'] = {'x': np.asarray(s['x'], float), 'y': np.asarray(s['y'], float),
-                     'z': np.asarray(s['z'], float), 'ion': label}
+    ion_total = {'unranged': int(totals[-1])}
+    for i, r in enumerate(ranges):
+        ion_total[r['ion']] = ion_total.get(r['ion'], 0) + int(totals[i])
+    out['sample'] = {'x': np.concatenate(keep_x), 'y': np.concatenate(keep_y), 'z': np.concatenate(keep_z),
+                     'ion': label, 'total': ion_total}
     if has_v:
         out['vdc_index'] = np.arange(0, n, max(1, n // 2000))
         out['vdc'] = np.asarray(ions['vdc'][out['vdc_index']], float)
@@ -391,7 +408,85 @@ def analyse(ions, ranges=None, bin_width=0.05, max_mass=None, n_sample=20000, de
     if multi:
         out['multiple_fraction'] = float(mult[1] / n)  # fraction of ions detected in multiple-hit events
     out['channels'] = channel_medians(ions)
+    out['R2E'], out['R2I'] = R2E, R2I
+    if sections:
+        out['sections'] = cross_sections(ions, ranges, lows, highs, nl, out['extent'], seed=seed + 1)
     return out
+
+
+def _label_groups(ranges):
+    """(labels x groups) 0/1 matrix: range -> its ion species, last label (unranged) -> last group."""
+    ions = list(dict.fromkeys(r['ion'] for r in ranges))
+    L2G = np.zeros((len(ranges) + 1, len(ions) + 1))
+    for i, r in enumerate(ranges):
+        L2G[i, ions.index(r['ion'])] = 1
+    L2G[-1, -1] = 1
+    return L2G
+
+
+def _slab(v, start, spacing, steps, thickness):
+    """Step index of the slab around each value and whether it lies inside it (|v - centre| <= t/2)."""
+    s = np.clip(np.floor((v - start) / spacing).astype(np.int64), 0, steps - 1)
+    return s, np.abs(v - (start + (s + 0.5) * spacing)) <= thickness / 2
+
+
+def cross_sections(ions, ranges, lows, highs, nl, ext, steps=15, t_xy=2.0, t_xz=4.0, prof_bin=1.0, cap=1500, seed=1):
+    """Slabs for the interactive cross-sections (slider positions), from all ions:
+      x-y slices: `steps` slabs of thickness t_xy (nm) at equally spaced depths
+      x-z sections: `steps` slabs of thickness t_xz (nm) at equally spaced y
+    Profiles (counts per label and bin of prof_bin nm) along x and y of each x-y slice and along
+    depth of each x-z section; points (up to `cap` per ion and slab, minor ions complete)."""
+    n = len(ions)
+    (x0, x1), (y0, y1), (_, z1), D = ext['x'], ext['y'], ext['z'], ext['depth']
+    dz, dy = D / steps, (y1 - y0) / steps
+    nbx = max(1, int(np.ceil((x1 - x0) / prof_bin)))
+    nby = max(1, int(np.ceil((y1 - y0) / prof_bin)))
+    nbd = max(1, int(np.ceil(D / prof_bin)))
+    P_x = np.zeros(steps * nl * nbx, np.int64)
+    P_y = np.zeros(steps * nl * nby, np.int64)
+    P_d = np.zeros(steps * nl * nbd, np.int64)
+
+    def chunks():
+        for a in range(0, n, CHUNK):
+            c = ions[a:a + CHUNK]
+            m = np.asarray(c['m'], np.float64)
+            x, y = np.asarray(c['x'], np.float64), np.asarray(c['y'], np.float64)
+            d = z1 - np.asarray(c['z'], np.float64)
+            g = np.isfinite(m) & np.isfinite(x) & np.isfinite(y) & np.isfinite(d)
+            m, x, y, d = m[g], x[g], y[g], d[g]
+            lab = _label(m, lows, highs)
+            s1, in1 = _slab(d, 0.0, dz, steps, t_xy)
+            s2, in2 = _slab(y, y0, dy, steps, t_xz)
+            yield x, y, d, lab, s1, in1, s2, in2
+
+    for x, y, d, lab, s1, in1, s2, in2 in chunks():
+        bx, by, bd = _bin(x, x0, x1, nbx), _bin(y, y0, y1, nby), _bin(d, 0, D, nbd)
+        k1 = s1[in1] * nl + lab[in1]
+        P_x += np.bincount(k1 * nbx + bx[in1], minlength=P_x.size)
+        P_y += np.bincount(k1 * nby + by[in1], minlength=P_y.size)
+        P_d += np.bincount((s2[in2] * nl + lab[in2]) * nbd + bd[in2], minlength=P_d.size)
+    P_x, P_y, P_d = P_x.reshape(steps, nl, nbx), P_y.reshape(steps, nl, nby), P_d.reshape(steps, nl, nbd)
+
+    # points: keep probability per (slab, label) so that about `cap` points are shown
+    L2G = _label_groups(ranges)  # same cap per ion species, whatever its number of ranges
+    per_species = lambda P: (P.sum(axis=2) @ L2G) @ L2G.T  # noqa: E731  (steps, labels)
+    p1 = np.minimum(1.0, cap / np.maximum(per_species(P_x), 1)).ravel()
+    p2 = np.minimum(1.0, cap / np.maximum(per_species(P_d), 1)).ravel()
+    skip_unranged = nl > 1  # with ranges: unranged ions are not drawn in the sections
+    rng = np.random.default_rng(seed)
+    xy, xz = [], []
+    for x, y, d, lab, s1, in1, s2, in2 in chunks():
+        r = rng.random(len(x))
+        ok = lab < nl - 1 if skip_unranged else np.ones(len(x), bool)
+        k1 = in1 & ok & (r < p1[s1 * nl + lab])
+        k2 = in2 & ok & (r < p2[s2 * nl + lab])
+        xy.append(np.stack([s1[k1], lab[k1], x[k1], y[k1]], axis=1))
+        xz.append(np.stack([s2[k2], lab[k2], x[k2], d[k2]], axis=1))
+    return {'steps': steps, 'thickness_xy': t_xy, 'thickness_xz': t_xz, 'bin': prof_bin,
+            'depths': (np.arange(steps) + 0.5) * dz, 'ys': y0 + (np.arange(steps) + 0.5) * dy,
+            'bx': x0 + (np.arange(nbx) + 0.5) * (x1 - x0) / nbx, 'by': y0 + (np.arange(nby) + 0.5) * (y1 - y0) / nby,
+            'bd': (np.arange(nbd) + 0.5) * D / nbd, 'P_x': P_x, 'P_y': P_y, 'P_d': P_d,
+            'points_xy': np.concatenate(xy), 'points_xz': np.concatenate(xz)}
 
 
 # ---------------------------------------------------------------- AP Suite experiment export (.xml)

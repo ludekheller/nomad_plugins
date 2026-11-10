@@ -125,3 +125,44 @@ def test_dic_before_machine_is_noop(folder):
     shutil.copy(DATA / DIC, folder / DIC)
     raw = run_parser(folder / DIC)
     assert raw.data.test_entry is None and not list(folder.glob('*.archive.json'))
+
+
+def test_machine_detected_and_hand_value_kept(folder):
+    shutil.copy(DATA / NAME, folder / NAME)
+    run_parser(folder / NAME)
+    assert process_entry(folder).data.testing_machine == 'Walter+Bai (UTTRMO)'
+    eln = folder / f'{NAME}.archive.json'
+    doc = json.loads(eln.read_text())
+    doc['data']['testing_machine'] = 'other'  # changed by hand
+    eln.write_text(json.dumps(doc))
+    assert process_entry(folder).data.testing_machine == 'other'
+
+
+def test_mitter_record(folder):
+    """MITTER: same software and format as Walter+Bai, recognised by its columns; no DIC."""
+    from nomad.client import normalize_all
+    from nomad.datamodel import EntryArchive, EntryMetadata
+    from nomad.datamodel.context import ClientContext
+    from nomad.parsing.parsers import match_parser
+
+    from nomad_walterbai.schema_packages.walterbai import WalterBaiTest
+
+    name = '15ms_tahzk_20C'
+    shutil.copy(DATA / name, folder / name)
+    assert type(match_parser(str(folder / name))[0]).__name__ == 'WalterBaiParser'
+    raw = run_parser(folder / name)
+    assert raw.data.test_entry == f'pulse_tests/{name}.archive.json'
+    data = json.loads((folder / f'{name}.archive.json').read_text())['data']
+    assert 'dic_file' not in data['files']
+    data.pop('m_def')
+    a = EntryArchive(m_context=ClientContext(local_dir=str(folder.parent)),
+                     metadata=EntryMetadata(mainfile=f'pulse_tests/{name}.archive.json'))
+    a.data = WalterBaiTest.m_from_dict(data)
+    normalize_all(a)
+    d = a.data
+    assert d.testing_machine == 'MITTER' and a.metadata.entry_name == name
+    assert d.dic is None and d.machine.water_temperature_down is not None
+    assert d.machine.stress.magnitude.max() == pytest.approx(1033.0, abs=0.1)
+    assert d.machine.strain.max() == pytest.approx(55.81, abs=0.01)
+    assert d.test_temperature.magnitude == pytest.approx(20.0, abs=0.2)
+    assert [f.label for f in d.figures] == ['Stress vs strain', 'Explorer (choose x and y)']

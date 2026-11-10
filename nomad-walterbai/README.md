@@ -1,7 +1,7 @@
 # nomad-walterbai
 
-NOMAD plugin for thermomechanical tests on the **Walter+Bai (UTTRMO)** machine, optionally
-with **1D DIC**.
+NOMAD plugin for thermomechanical tests on the **Walter+Bai (UTTRMO)** and **MITTER**
+machines (same control software and record format), optionally with **1D DIC**.
 
 ## Use
 
@@ -12,7 +12,10 @@ Upload into one folder of a project
 * optionally the 1D DIC export `<name>_dic.csv` (`;`-separated, header
   `Fram ID;Absolute Timestamp;...` with `Tnnn - Displacement [mm]`, `Tnnn - Position in X/Y [mm]`).
 
-The plugin creates the editable entry `<name>.archive.json` ("Walter+Bai (UTTRMO) test").
+The plugin creates the editable entry `<name>.archive.json` ("Walter+Bai / MITTER test").
+The machine is detected from the record's columns (`Water_Temp_Down` -> MITTER,
+`Position_laser_sensor` -> Walter+Bai) and stored in `testing_machine`; it can be changed by
+hand. MITTER records come without DIC.
 The DIC export can also be added later into the same folder; the entry is then updated.
 
 The entry contains

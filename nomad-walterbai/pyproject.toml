@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nomad-walterbai"
-version = "0.1.1"
+version = "0.2.0"
 description = "NOMAD plugin: thermomechanical tests on the Walter+Bai (UTTRMO) machine with 1D DIC"
 readme = "README.md"
 requires-python = ">=3.10"

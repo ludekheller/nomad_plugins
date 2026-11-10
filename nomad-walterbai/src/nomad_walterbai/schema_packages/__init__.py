@@ -10,5 +10,5 @@ class WalterBaiSchemaPackageEntryPoint(SchemaPackageEntryPoint):
 
 walterbai = WalterBaiSchemaPackageEntryPoint(
     name='WalterBaiTest',
-    description='Thermomechanical tests on the Walter+Bai (UTTRMO) machine with optional 1D DIC.',
+    description='Thermomechanical tests on the Walter+Bai (UTTRMO) and MITTER machines with optional 1D DIC.',
 )

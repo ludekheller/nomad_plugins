@@ -1,4 +1,5 @@
-"""Thermomechanical test on the Walter+Bai (UTTRMO) machine, optionally with 1D DIC.
+"""Thermomechanical test on the Walter+Bai (UTTRMO) or MITTER machine (same control software),
+optionally with 1D DIC.
 
 One entry per test: the machine record `<name>` (no extension) and, if present, the 1D DIC
 export `<name>_dic.csv` in the same folder. Both records are synchronised; their times are
@@ -11,12 +12,12 @@ import numpy as np
 from nomad.datamodel.data import ArchiveSection, EntryData
 from nomad.datamodel.metainfo.annotations import ELNAnnotation
 from nomad.datamodel.metainfo.plot import PlotlyFigure, PlotSection
-from nomad.metainfo import Datetime, Quantity, SchemaPackage, Section, SubSection
+from nomad.metainfo import Datetime, MEnum, Quantity, SchemaPackage, Section, SubSection
 
 from nomad_walterbai import readers as R
 from nomad_walterbai.explorer import explorer_figure
 
-m_package = SchemaPackage(name='Walter+Bai (UTTRMO) thermomechanical tests')
+m_package = SchemaPackage(name='Walter+Bai (UTTRMO) and MITTER thermomechanical tests')
 
 MAX_PLOT_POINTS = 6000
 MAP_MAX_CELLS = 30000  # strain map: frames x segments kept (flat lists; NOMAD mangles 2D z)
@@ -31,6 +32,7 @@ MACHINE_COLUMNS = {
     'Base_Temperature / C': ('base_temperature', 'celsius'),
     'Position_laser_sensor / mm': ('laser_position', 'millimeter'),
     'Water_Temp_Up / C': ('water_temperature', 'celsius'),
+    'Water_Temp_Down / C': ('water_temperature_down', 'celsius'),
     'Strain / %': ('strain', None),
     'Stress / MPa': ('stress', 'megapascal'),
     'Cycle number 1': ('cycle_number_1', None),
@@ -88,6 +90,7 @@ class MachineData(ArchiveSection):
     base_temperature = _arr('celsius')
     laser_position = _arr('millimeter')
     water_temperature = _arr('celsius')
+    water_temperature_down = _arr('celsius')
     strain = _arr(description='%')
     stress = _arr('megapascal')
     cycle_number_1 = _arr()
@@ -120,9 +123,11 @@ class DICData(ArchiveSection):
 class WalterBaiTest(PlotSection, EntryData):
     """One thermomechanical test on the Walter+Bai (UTTRMO) machine (+ 1D DIC)."""
 
-    m_def = Section(label='Walter+Bai (UTTRMO) test')
+    m_def = Section(label='Walter+Bai / MITTER test')
 
     name = _str()
+    testing_machine = Quantity(type=MEnum(*R.MACHINES), a_eln=ELNAnnotation(component='EnumEditQuantity'),
+                       description='Testing machine; detected from the record columns, can be changed by hand')
     date = Quantity(type=Datetime, a_eln=ELNAnnotation(component='DateTimeEditQuantity'),
                     description='Test date (from the DIC export if present)')
     operator = _str()
@@ -157,6 +162,8 @@ class WalterBaiTest(PlotSection, EntryData):
             if v is not None and v.size and np.all(np.isfinite(v)):  # incomplete channels: explorer only
                 setattr(machine, q, v)
         self.machine = machine
+        if self.testing_machine is None:
+            self.testing_machine = R.detect_machine(machine.columns)
         if self.test_temperature is None and 'Base_Temperature / C' in cols:
             bt = cols['Base_Temperature / C']
             if np.isfinite(bt).any():
@@ -260,7 +267,7 @@ class WalterBaiTest(PlotSection, EntryData):
 class WalterBaiRawFile(EntryData):
     """Raw Walter+Bai machine record or DIC export; its data are in the test entry."""
 
-    m_def = Section(label='Walter+Bai raw file')
+    m_def = Section(label='Walter+Bai / MITTER raw file')
     test_entry = Quantity(type=str, description='Test entry this file belongs to')
 
 

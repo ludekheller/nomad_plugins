@@ -10,7 +10,7 @@ class WalterBaiParserEntryPoint(ParserEntryPoint):
 
 walterbai_parser = WalterBaiParserEntryPoint(
     name='WalterBaiParser',
-    description='Walter+Bai (UTTRMO) machine record (no extension): creates the test entry.',
+    description='Walter+Bai (UTTRMO) or MITTER machine record (no extension): creates the test entry.',
     mainfile_name_re=r'.*',  # no extension: recognised by the header line only
     mainfile_mime_re=r'text/.*',
     mainfile_contents_re=r'^﻿?Time / s\tPosition / mm\tForce / N',

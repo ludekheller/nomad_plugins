@@ -18,6 +18,18 @@ def is_machine_header(line):
     return line.lstrip('﻿').startswith(MACHINE_MARK)
 
 
+MACHINES = ['Walter+Bai (UTTRMO)', 'MITTER', 'other']
+
+
+def detect_machine(columns):
+    """Machine from the column set of the record (both machines use the same software)."""
+    if 'Water_Temp_Down / C' in columns:
+        return 'MITTER'
+    if 'Position_laser_sensor / mm' in columns:
+        return 'Walter+Bai (UTTRMO)'
+    return None
+
+
 def is_dic_header(line):
     line = line.lstrip('﻿')
     return bool(re.match(r'Fram(e)? ID;Absolute Timestamp;', line)) and ' - Displacement [mm]' in line

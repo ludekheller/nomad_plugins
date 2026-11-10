@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nomad-linseis"
+version = "0.1.0"
+description = "NOMAD plugin: Linseis TMA PT1000LT / PT1600 (thermomechanical analyzer) text exports"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ludek Heller" }]
+dependencies = ["nomad-lab>=1.3.0", "numpy", "tzdata"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points.'nomad.plugin']
+linseis_tma = "nomad_linseis.schema_packages:linseis_tma"
+linseis_tma_parser = "nomad_linseis.parsers:linseis_tma_parser"

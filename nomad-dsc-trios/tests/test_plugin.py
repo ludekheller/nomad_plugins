@@ -206,6 +206,15 @@ def test_default_settings_created_once_per_folder(tmp_path):
     assert create_default_settings(ctx, 'other', sdef) is None  # second call: already there
 
 
+def test_deleted_settings_created_again_on_reprocessing(upload):
+    process(upload / CSV)
+    settings = upload / '0000_dsc_evaluation.archive.json'
+    assert settings.exists()
+    settings.unlink()  # removed by the user
+    process(upload / CSV)  # the project is reprocessed
+    assert json.loads(settings.read_text())['data']['mode'] == 'off'
+
+
 def test_old_settings_name_still_used(upload):
     """Folders set up before 0.6.4 have dsc_evaluation.archive.json: used, no second file created."""
     (upload / 'dsc_evaluation.archive.json').write_text(json.dumps({'data': {

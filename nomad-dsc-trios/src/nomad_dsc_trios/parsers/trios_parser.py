@@ -40,7 +40,17 @@ class TriosDSCParser(MatchingParser):
         archive.data = TRIOS_DSC_Export(dsc_entry=eln_rel)
         context = archive.m_context
         if context.raw_path_exists(eln_rel):
-            # entry exists (e.g. CSV re-uploaded): reprocess it so it re-reads the CSV
+            # entry exists (e.g. CSV re-uploaded): reprocess it so it re-reads the CSV;
+            # folder settings deleted meanwhile are created again (DSC only)
+            try:
+                with context.raw_file(eln_rel, 'r') as f:
+                    is_dsc = str(json.load(f).get('data', {}).get('m_def', '')) == ELN_DEF
+            except (OSError, ValueError):
+                is_dsc = False
+            if is_dsc:
+                from nomad_dsc_trios.evaluation_nomad import create_default_settings  # noqa: PLC0415
+
+                create_default_settings(context, os.path.dirname(csv_rel), SETTINGS_DEF, logger)
             self._reprocess(context, eln_rel, logger)
             return
 

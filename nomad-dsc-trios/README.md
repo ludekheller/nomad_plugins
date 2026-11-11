@@ -70,7 +70,7 @@ peak list with flags; the plot *Evaluation (tangent method)* with baselines, tan
 Values are stored rounded to 0.01 °C / 0.01 J/g. Values typed in by hand are never overwritten
 (bookkeeping in `auto_filled`); Rs/Rf are left to you.
 
-**Whole folders**: the first DSC curve uploaded into a folder creates `0000_dsc_evaluation.archive.json`
+**Whole folders**: the first DSC curve uploaded into a folder creates `0000_dsc_evaluation.archive.json` (again when the project is reprocessed after it was deleted)
 there (mode off, all parameters with their defaults) unless a settings file exists in that folder or
 above; exactly one per folder, an existing file is never overwritten. It can also be uploaded by hand
 (see `examples/`). The settings entry always shows every parameter with the value used. Its settings (mode, cycle, parameters, windows) apply to all DSC entries in this folder

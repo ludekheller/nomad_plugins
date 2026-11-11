@@ -49,6 +49,8 @@ def test_dsc_entry_reads_csv(upload):
     r = d.transformation_results
     assert r.Ms.magnitude == pytest.approx(-56.274)
     assert r.Af.magnitude == pytest.approx(5.708)
+    assert r.Ms_K.to('kelvin').magnitude == pytest.approx(-56.274 + 273.15)  # kelvin copies for the search page
+    assert r.Af_K.to('kelvin').magnitude == pytest.approx(5.708 + 273.15)
 
 
 def test_manual_values_are_kept(upload):
@@ -62,6 +64,7 @@ def test_manual_values_are_kept(upload):
     assert d.specimen.material == 'NiTiNb'
     assert d.specimen.specimen_id == 'NiTiNb_23-1-1'  # empty field filled from the file
     assert d.transformation_results.Ms.magnitude == pytest.approx(-50.0)  # kept
+    assert d.transformation_results.Ms_K.magnitude == pytest.approx(223.15)  # follows the hand value
     assert d.transformation_results.Mf.magnitude == pytest.approx(-83.147)  # filled
 
 

@@ -3,6 +3,11 @@
 Custom-schema quantities are addressed as  data.<path>#<package.module.Class>  (scalars only).
 Quantities stored in units with 'minute' (e.g. heating rate in K/min) are left out: the GUI's
 unit library cannot convert them ('Units do not match ... undefined K / minute').
+Quantities stored in degree Celsius have no histogram filter either: the GUI cannot convert
+degC temperature differences (a 5 degC range becomes 5 - 273.15 and the page crashes), and it
+has no degC <-> K conversion (checked against the GUI bundle of NOMAD 2.0.0).
+The plugins therefore store a kelvin copy (<name>_K) of these temperatures; the filters use it.
+(tests/test_app.py checks that no histogram uses a minute- or Celsius-based unit).
 If a schema is renamed or a quantity removed in one of the plugins, update SCHEMAS / the menus here.
 """
 
@@ -43,12 +48,6 @@ def terms(schema, path, title, show_input=True):
 
 
 def hist(schema, path, title, unit=None):
-    # No unit for temperatures stored in degC: the 2.0 GUI converts the histogram step (a
-    # temperature *difference*) to the axis unit; for an absolute 'degC' axis that subtracts
-    # 273.15, the step becomes negative and the page crashes ('Please provide the value for a
-    # Quantity as a number'). Without a unit the axis follows the unit system (K by default).
-    if unit == 'degC':
-        unit = None
     return MenuItemHistogram(x=Axis(search_quantity=q(schema, path), unit=unit), title=title)
 
 
@@ -77,10 +76,10 @@ menu = Menu(
                 terms('dsc', 'specimen.specimen_id', 'Specimen'),
                 terms('dsc', 'specimen.semi_product', 'Semi-product'),
                 terms('dsc', 'instrument_settings.instrument', 'Instrument'),
-                hist('dsc', 'transformation_results.Ms', 'Ms', 'degC'),
-                hist('dsc', 'transformation_results.Af', 'Af', 'degC'),
-                hist('dsc', 'transformation_results.peak_temperature_cooling', 'Peak T (cooling)', 'degC'),
-                hist('dsc', 'transformation_results.peak_temperature_heating', 'Peak T (heating)', 'degC'),
+                hist('dsc', 'transformation_results.Ms_K', 'Ms', 'K'),
+                hist('dsc', 'transformation_results.Af_K', 'Af', 'K'),
+                hist('dsc', 'transformation_results.peak_temperature_cooling_K', 'Peak T (cooling)', 'K'),
+                hist('dsc', 'transformation_results.peak_temperature_heating_K', 'Peak T (heating)', 'K'),
                 hist('dsc', 'transformation_results.enthalpy_heating', 'Enthalpy (heating)', 'J/g'),
             ],
         ),
@@ -101,7 +100,7 @@ menu = Menu(
                 terms('instron', 'test_type', 'Test type'),
                 terms('instron', 'method', 'Method'),
                 terms('instron', 'instrument.testing_machine', 'Testing machine'),
-                hist('instron', 'test_temperature', 'Test temperature', 'degC'),
+                hist('instron', 'test_temperature_K', 'Test temperature', 'K'),
                 hist('instron', 'strain_rate', 'Strain rate', '1/s'),
             ],
         ),
@@ -112,7 +111,7 @@ menu = Menu(
                 terms('walterbai', 'specimen.material', 'Material'),
                 terms('walterbai', 'specimen.specimen_id', 'Specimen'),
                 terms('walterbai', 'test_type', 'Test type'),
-                hist('walterbai', 'test_temperature', 'Test temperature', 'degC'),
+                hist('walterbai', 'test_temperature_K', 'Test temperature', 'K'),
             ],
         ),
         Menu(
@@ -134,7 +133,7 @@ menu = Menu(
                 terms('apt', 'acquisition.run_outcome', 'Run outcome', show_input=False),
                 hist('apt', 'acquisition.laser_energy', 'Laser energy', 'pJ'),
                 hist('apt', 'acquisition.base_temperature', 'Base temperature', 'K'),
-                hist('apt', 'results.ions_reconstructed', 'Ions reconstructed'),
+                hist('apt', 'results.ions_reconstructed', 'Ions reconstructed', 'dimensionless'),
             ],
         ),
         Menu(
@@ -143,7 +142,7 @@ menu = Menu(
                 terms('ir', 'purpose', 'Purpose', show_input=False),
                 terms('ir', 'camera', 'Camera'),
                 terms('ir', 'specimen', 'Specimen'),
-                hist('ir', 'peak_temperature', 'Peak temperature', 'degC'),
+                hist('ir', 'peak_temperature_K', 'Peak temperature', 'K'),
                 hist('ir', 'duration', 'Duration', 's'),
             ],
         ),

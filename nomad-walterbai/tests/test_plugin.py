@@ -77,6 +77,7 @@ def test_machine_and_dic(folder):
     assert m.strain.max() == pytest.approx(16.12, abs=0.01) and m.stress.magnitude.max() == pytest.approx(915.6, 0.1)
     assert m.laser_position is None and m.jh_resistance is None  # NaN / inf channels: explorer only
     assert d.test_temperature.magnitude == pytest.approx(151.2, abs=0.2)
+    assert d.test_temperature_K.magnitude == pytest.approx(d.test_temperature.magnitude + 273.15)
     dic = d.dic
     assert len(dic.points) == 58 and len(dic.segments) == 57 and dic.segments[0] == 'T102–T103'
     assert dic.time.magnitude[0] == 0

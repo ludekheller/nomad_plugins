@@ -68,6 +68,7 @@ def test_campaign_fills_empty_fields(upload):
     assert d.campaign_file == 'NiTi_tension/campaign.archive.json'
     assert d.loading_mode == 'tension' and d.test_type == 'superelastic cycling'
     assert d.test_temperature.magnitude == pytest.approx(30.0)
+    assert d.test_temperature_K.magnitude == pytest.approx(303.15)  # kelvin copy, also for campaign values
     assert d.specimen.material == 'NiTi' and d.specimen.cross_section_shape == 'round'
     assert d.specimen.diameter.magnitude == pytest.approx(3.0)
     assert d.specimen.cross_section_area.magnitude == pytest.approx(7.07)  # specimen.txt wins over computed

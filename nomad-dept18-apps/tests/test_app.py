@@ -35,3 +35,27 @@ def test_search_quantities_valid():
     apps.initialize_search_quantities()
     used = apps._build_app_response(lab_data_app.app)['search_quantities']  # raises on unknown names
     assert len(used) > 40
+
+
+def _histograms(menu):
+    for item in menu.items or []:
+        if item.type == 'menu':
+            yield from _histograms(item)
+        elif item.type == 'histogram':
+            yield item
+
+
+def test_no_histogram_on_units_the_gui_cannot_convert():
+    """NOMAD 2.0 GUI crashes on histograms of degC or .../minute quantities."""
+    for item in _histograms(lab_data_app.app.menu):
+        name = item.x.search_quantity
+        if '#' not in name:
+            continue
+        path, schema = name.split('#')
+        module, cls = schema.rsplit('.', 1)
+        section = getattr(importlib.import_module(module), cls).m_def
+        *subs, qname = path.split('.')[1:]
+        for sub in subs:
+            section = section.all_sub_sections[sub].sub_section
+        unit = str(section.all_quantities[qname].unit or '')
+        assert 'Celsius' not in unit and 'minute' not in unit, (name, unit)

@@ -57,6 +57,19 @@ def _arr(unit=None, **kw):
     return Quantity(type=np.float64, shape=['*'], unit=unit, **kw)
 
 
+def _kelvin(name):
+    return Quantity(type=np.float64, unit='kelvin', description=(
+        f'{name} in K, computed from the °C value (read-only). Used by the search filters: the NOMAD 2.0 '
+        'GUI cannot draw histogram filters of °C quantities.'))
+
+
+def kelvin_copies(section, names):
+    """Set <name>_K = <name> converted to kelvin (or unset it if <name> is empty)."""
+    for name in names:
+        value = getattr(section, name)
+        setattr(section, f'{name}_K', None if value is None else float(value.to('kelvin').magnitude))
+
+
 def _file(description):
     return Quantity(type=str, description=description, a_eln=ELNAnnotation(component='FileEditQuantity'),
                     a_browser=dict(adaptor='RawFileAdaptor'))
@@ -133,6 +146,7 @@ class WalterBaiTest(PlotSection, EntryData):
     operator = _str()
     test_type = _str(description='e.g. pulse heating, superelastic cycling, actuation ...')
     test_temperature = _num('celsius', description='Mean base temperature of the record')
+    test_temperature_K = _kelvin('test_temperature')
     test_description = _str(rich=True)
     notes = _str(rich=True)
 
@@ -147,6 +161,7 @@ class WalterBaiTest(PlotSection, EntryData):
                 self._read(archive, logger)
             except Exception as e:
                 logger.error('could not read the test files', exc_info=e)
+        kelvin_copies(self, ('test_temperature',))
         if self.name and archive.metadata is not None:
             archive.metadata.entry_name = self.name
         super().normalize(archive, logger)

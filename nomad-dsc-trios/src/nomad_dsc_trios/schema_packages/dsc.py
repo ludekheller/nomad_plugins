@@ -38,6 +38,21 @@ def _num(unit, display=None, **kw):
     return Quantity(type=np.float64, unit=unit, a_eln=eln, **kw)
 
 
+KELVIN_NOTE = ('{} in K, computed from the °C value (read-only). Used by the search filters: the NOMAD 2.0 '
+               'GUI cannot draw histogram filters of °C quantities.')
+
+
+def _kelvin(name):
+    return Quantity(type=np.float64, unit='kelvin', description=KELVIN_NOTE.format(name))
+
+
+def kelvin_copies(section, names):
+    """Set <name>_K = <name> converted to kelvin (or unset it if <name> is empty)."""
+    for name in names:
+        value = getattr(section, name)
+        setattr(section, f'{name}_K', None if value is None else float(value.to('kelvin').magnitude))
+
+
 def _file(description):
     return Quantity(
         type=str,
@@ -111,6 +126,9 @@ class DSC_Measurement(ArchiveSection):
     trios_analyses = SubSection(section_def=TRIOS_Analysis, repeats=True)
 
 
+DSC_TEMPERATURES = ('Ms', 'Mf', 'As', 'Af', 'Rs', 'Rf', 'peak_temperature_cooling', 'peak_temperature_heating')
+
+
 class DSC_Results(ArchiveSection):
     m_def = Section(a_eln=dict(overview=True))
     evaluation_method = _str(description='e.g. tangent method (ASTM F2004), software used')
@@ -125,6 +143,16 @@ class DSC_Results(ArchiveSection):
     enthalpy_cooling = _num('joule / gram')
     enthalpy_heating = _num('joule / gram')
     transformation_sequence = _str(description="e.g. B2-B19', B2-R-B19', multistage")
+
+    # kelvin copies for the search page (see kelvin_copies)
+    Ms_K = _kelvin('Ms')
+    Mf_K = _kelvin('Mf')
+    As_K = _kelvin('As')
+    Af_K = _kelvin('Af')
+    Rs_K = _kelvin('Rs')
+    Rf_K = _kelvin('Rf')
+    peak_temperature_cooling_K = _kelvin('peak_temperature_cooling')
+    peak_temperature_heating_K = _kelvin('peak_temperature_heating')
 
 
 class DSC_SMA(PlotSection, EntryData):
@@ -151,6 +179,8 @@ class DSC_SMA(PlotSection, EntryData):
                 logger.error('could not read the TRIOS DSC file', data_file=self.data_file, exc_info=e)
         if self.run_name and archive.metadata is not None:
             archive.metadata.entry_name = self.run_name  # entry list shows the run, not the file name
+        if self.transformation_results is not None:  # also after hand edits of the °C values
+            kelvin_copies(self.transformation_results, DSC_TEMPERATURES)
         super().normalize(archive, logger)
 
     def _read_data_file(self, archive, logger):

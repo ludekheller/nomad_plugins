@@ -44,6 +44,19 @@ def _r(v, digits=5):
     return [None if not np.isfinite(x) else float(f'{x:.{digits}g}') for x in np.asarray(v, float).ravel()]
 
 
+def _kelvin(name):
+    return Quantity(type=np.float64, unit='kelvin', description=(
+        f'{name} in K, computed from the °C value (read-only). Used by the search filters: the NOMAD 2.0 '
+        'GUI cannot draw histogram filters of °C quantities.'))
+
+
+def kelvin_copies(section, names):
+    """Set <name>_K = <name> converted to kelvin (or unset it if <name> is empty)."""
+    for name in names:
+        value = getattr(section, name)
+        setattr(section, f'{name}_K', None if value is None else float(value.to('kelvin').magnitude))
+
+
 class IRROI(ArchiveSection):
     m_def = Section(label_quantity='name')
     name = Quantity(type=str)
@@ -90,6 +103,7 @@ class IRRecord(PlotSection, EntryData):
     time_stamp_start = Quantity(type=np.float64, unit='millisecond',
                                 description='First time stamp of the acquisition (PC time base, not clock time)')
     peak_temperature = Quantity(type=np.float64, unit='celsius')
+    peak_temperature_K = _kelvin('peak_temperature')
     groups_in_file = Quantity(type=str, shape=['*'])
     rois = SubSection(section_def=IRROI, repeats=True)
 
@@ -99,6 +113,7 @@ class IRRecord(PlotSection, EntryData):
                 self._read(archive, logger)
             except Exception as e:
                 logger.error('could not read the IR record', data_file=self.data_file, exc_info=e)
+        kelvin_copies(self, ('peak_temperature',))
         if self.name and archive.metadata is not None:
             archive.metadata.entry_name = self.name
         super().normalize(archive, logger)

@@ -71,6 +71,7 @@ def test_entry(tmp_path):
     e = a.data
     assert a.metadata.entry_name == 'temp_profile (5)' and e.purpose == 'heat treatment'
     assert (e.n_frames, e.valid_frames) == (40, 38) and abs(e.peak_temperature.magnitude - 425) < 1
+    assert e.peak_temperature_K.magnitude == pytest.approx(e.peak_temperature.magnitude + 273.15)
     assert [r.name for r in e.rois] == ['ROI_00', 'ROI_01'] and e.rois[1].description == 'gauge length'
     assert e.rois[0].profiles.shape == (38, 60)
     assert [f.label for f in e.figures] == ['Temperature vs time', 'Explorer (choose x and y)',

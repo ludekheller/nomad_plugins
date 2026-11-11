@@ -13,8 +13,8 @@ TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
 * TRIOS JSON (File -> Export, or automatic export at the end of each run, or batch export of
   old files) follows TA's public schema (TRIOSJSONExportSchema). The plugin reads the
   'Processed' results (else 'Original'), sample, operator, start time, instrument
-  configuration and procedure. TRIOS analyses inside the JSON are not read yet (a warning
-  says so); enter Ms/Mf/As/Af by hand or use the CSV export for TRIOS onsets.
+  configuration and procedure. TRIOS onset/endset analyses inside the JSON are read like in
+  the CSV export and copied to Ms/Mf/As/Af (one analysis per ramp direction).
 * TRIOS JSON files are large (~56 MB per run). Upload them gzip-compressed as
   `<run>.json.gz` (~6 MB; 7-Zip -> Add to archive -> format gzip, or `gzip -k <run>.json`).
   The plugin reads `.json.gz` directly; a `.zip` does not help because NOMAD unpacks it.
@@ -37,6 +37,40 @@ TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
   (0…1). From a TRIOS JSON export: time, step time, temperature, set point, sample sensor
   temperature, heat flow (W/g and µW), heat capacity, delta T; from a CSV: time, temperature,
   heat flow.
+
+## Transformation temperatures: tangent method
+
+Section **evaluation** of a DSC entry, field **mode**:
+
+* **off** (default): nothing is computed. Ms/Mf/As/Af come from the TRIOS analyses or are typed in.
+* **semi-automatic**: add one **window** per peak (ramp cooling/heating, T1, T2 = baseline points on
+  both sides of the peak, like the two TRIOS cursors) and save.
+* **automatic**: the plugin finds the peaks and the baseline points itself. The windows it used are
+  written into **windows**; switch to semi-automatic to correct one of them.
+
+Construction (as TRIOS onset/endset with tangent types Tangent + Inflection): Savitzky-Golay smoothing
+and derivative on a uniform temperature grid; per flank the tangent at the steepest point
+(inflection) is intersected with the tangent to the curve at the baseline point. Automatic peaks:
+height >= `min_height_percent` (default 10 %) of the largest peak and >= `noise_factor` x noise,
+area >= `min_area` (0.5 J/g); the baseline point is where the curve becomes straight again beyond
+the peak. All parameters are fields of the section; the values used are stored in
+`parameters_used`. **cycle** (default 1) selects the cooling ramp and the following heating ramp.
+
+Results: overall **Ms** = start of the first cooling peak, **Mf** = end of the last cooling peak,
+**As/Af** the same on heating; **Ms1/Mf1 ... Ms3/Mf3, As1/Af1 ... As3/Af3** for the single peaks in
+the order of the ramp; peak temperature of the largest peak and the total enthalpy per ramp; the
+peak list with flags; the plot *Evaluation (tangent method)* with baselines, tangents and points.
+Values typed in by hand are never overwritten (bookkeeping in `auto_filled`); Rs/Rf are left to you.
+
+**Whole folders**: put `dsc_evaluation.archive.json` (see `examples/`) into a folder of the
+project. Its settings (mode, cycle, parameters, windows) apply to all DSC entries in this folder
+and its sub-folders; fields set in a single entry win. After changing it, reprocess the project
+(`nomad admin uploads process <project id>` on the server).
+
+**Table of a project**: `python scripts/dsc_results_csv.py <project id>` writes one CSV row per
+DSC entry (temperatures, enthalpies, mode, flags) via the NOMAD API.
+
+The engine (`nomad_dsc_trios.evaluation`) is plain numpy/scipy and can be used on its own.
 
 ## DMA (TRIOS JSON)
 

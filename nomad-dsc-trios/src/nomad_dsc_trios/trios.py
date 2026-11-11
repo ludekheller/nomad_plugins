@@ -343,6 +343,45 @@ def read_trios_json(doc, json_name, tz='Europe/Prague'):
     if not segments:
         raise ValueError('no data rows in the TRIOS JSON export')
 
+    # TRIOS analyses (Onset point, Endset point ...): kept as records; onset/endset of a single
+    # analysis per ramp direction is copied to Ms/Mf/As/Af like for CSV exports
+    seg_type = {s['name']: s.get('segment_type') for s in segments}
+    trios_analyses, pick = [], {}
+    for a in doc.get('Analyses') or []:
+        inputs = a.get('Inputs') or {}
+        step = (((inputs.get('X1') or {}).get('ResultsStep') or {}).get('Name') or '').strip()
+        details = []
+        for k, v in inputs.items():
+            if k in ('X1', 'Y1') or not isinstance(v, dict):
+                continue
+            val = v.get('Value')
+            if isinstance(val, dict):
+                num = val.get('Value')
+                num = _round(num, 6) if isinstance(num, (int, float)) else num
+                val = f"{num} {(val.get('Unit') or {}).get('Name', '')}".strip()
+            details.append(f'{k}: {val}')
+        for oname, out in (a.get('Outputs') or {}).items():
+            val = out.get('Value') if isinstance(out, dict) else None
+            if isinstance(val, dict):
+                value, unit = val.get('Value'), (val.get('Unit') or {}).get('Name')
+            else:
+                value, unit = val, None
+            if not isinstance(value, (int, float)):
+                continue
+            trios_analyses.append({'analysed_step': step, 'model': (a.get('Type') or {}).get('Name'),
+                                   'result_name': oname, 'result_value': _round(float(value), 6),
+                                   'result_unit': unit, 'details': '; '.join(details)})
+            if unit == '°C':
+                pick.setdefault((seg_type.get(step), oname.lower()), []).append(_round(float(value), 6))
+    results = {}
+    for key, qname in {('ramp_cooling', 'onset x'): 'Ms', ('ramp_cooling', 'endset x'): 'Mf',
+                       ('ramp_heating', 'onset x'): 'As', ('ramp_heating', 'endset x'): 'Af'}.items():
+        vals = pick.get(key, [])
+        if len(vals) == 1:
+            results[qname] = vals[0]
+    if results:
+        results['evaluation_method'] = 'TRIOS tangent onset/endset (copied automatically, verify)'
+
     sample = doc.get('Sample') or {}
     proc = doc.get('Procedure') or {}
     conf = ((proc.get('Configuration') or {}).get('InstrumentConfigurations') or [{}])[0]
@@ -396,6 +435,8 @@ def read_trios_json(doc, json_name, tz='Europe/Prague'):
         'measurement': {
             'tri_file': re.sub(r'\.json(\.gz)?$', '.tri', json_name, flags=re.IGNORECASE),
             'segments': segments,
+            'trios_analyses': trios_analyses,
         },
+        'transformation_results': results,
     }
     return clean(data), ramps, len(analyses), explorer

@@ -5,6 +5,7 @@ Simulates what the Oasis does: the TRIOS CSV is matched by the parser, which wri
 """
 
 import json
+import sys
 import shutil
 from pathlib import Path
 
@@ -76,3 +77,78 @@ def test_other_csv_is_not_matched(upload):
     assert parser is None or 'Trios' not in type(parser).__name__
     parser, _ = match_parser(str(upload / CSV))
     assert type(parser).__name__ == 'TriosDSCParser'
+
+
+def _set(eln, **data):
+    doc = json.loads(eln.read_text())
+    doc['data'].update(data)
+    eln.write_text(json.dumps(doc))
+
+
+def test_evaluation_off_by_default(upload):
+    process(upload / CSV)
+    d = process(upload / 'NiTiNb_23-1-1.archive.json').data
+    assert d.evaluation is None  # nothing computed unless asked for
+    assert d.transformation_results.Ms.magnitude == pytest.approx(-56.274)  # TRIOS value
+    assert d.transformation_results.Ms1 is None
+
+
+def test_evaluation_automatic(upload):
+    process(upload / CSV)
+    eln = upload / 'NiTiNb_23-1-1.archive.json'
+    _set(eln, evaluation={'mode': 'automatic', 'cycle': 2})
+    d = process(eln).data
+    r, ev = d.transformation_results, d.evaluation
+    assert [p.label for p in ev.peaks] == ['cooling peak 1', 'heating peak 1']
+    assert r.Ms.magnitude == pytest.approx(-56.3, abs=0.3)  # TRIOS: -56.274
+    assert r.Af.magnitude == pytest.approx(5.0, abs=0.5)  # TRIOS: 5.708
+    assert r.Ms1.magnitude == r.Ms.magnitude and r.Mf1.magnitude == r.Mf.magnitude
+    assert r.Ms_K.magnitude == pytest.approx(r.Ms.magnitude + 273.15)
+    assert r.enthalpy_cooling.magnitude > 1
+    assert 'automatic' in r.evaluation_method
+    assert {(w.ramp) for w in ev.windows} == {'cooling', 'heating'} and ev.windows_from_automatic
+    assert any(f.label == 'Evaluation (tangent method)' for f in d.figures)
+
+
+def test_evaluation_keeps_hand_values_and_semi_windows(upload):
+    process(upload / CSV)
+    eln = upload / 'NiTiNb_23-1-1.archive.json'
+    _set(eln, evaluation={'mode': 'automatic', 'cycle': 2})
+    d = process(eln).data
+    doc = json.loads(eln.read_text())
+    doc['data'] = d.m_to_dict()
+    doc['data']['transformation_results']['Mf'] = -80.0  # corrected by hand
+    doc['data']['evaluation']['mode'] = 'semi-automatic'
+    doc['data']['evaluation']['windows'] = [{'ramp': 'cooling', 'T1': -30.0, 'T2': -110.0}]
+    eln.write_text(json.dumps(doc))
+    d = process(eln).data
+    r = d.transformation_results
+    assert r.Mf.magnitude == pytest.approx(-80.0)  # kept
+    assert r.Ms.magnitude == pytest.approx(-56.3, abs=1.0)  # re-evaluated from the window
+    assert r.As1 is not None  # heating: no window -> old automatic values stay
+    assert 'heating: no window given' in d.evaluation.messages
+
+
+def test_folder_settings(upload):
+    process(upload / CSV)
+    (upload / 'dsc_evaluation.archive.json').write_text(json.dumps({'data': {
+        'm_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings',
+        'mode': 'automatic', 'cycle': 2, 'min_height_percent': 20}}))
+    d = process(upload / 'NiTiNb_23-1-1.archive.json').data
+    assert d.evaluation.settings_file.endswith('dsc_evaluation.archive.json')
+    assert json.loads(d.evaluation.parameters_used)['min_height_percent'] == 20
+    assert d.transformation_results.Ms.magnitude == pytest.approx(-56.3, abs=0.3)
+
+
+def test_results_csv_row(upload):
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
+    from dsc_results_csv import COLUMNS, row
+
+    process(upload / CSV)
+    eln = upload / 'NiTiNb_23-1-1.archive.json'
+    _set(eln, evaluation={'mode': 'automatic', 'cycle': 2})
+    archive = process(eln)
+    r = row({'entry_id': 'x', 'archive': archive.m_to_dict()})
+    assert set(r) == set(COLUMNS)
+    assert r['Ms'] == pytest.approx(archive.data.transformation_results.Ms.magnitude, abs=1e-3)  # °C
+    assert r['mode'] == 'automatic' and r['n_peaks_cooling'] == 1

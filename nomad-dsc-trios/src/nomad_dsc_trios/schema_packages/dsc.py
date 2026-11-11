@@ -16,10 +16,16 @@ import numpy as np
 from nomad.datamodel.data import ArchiveSection, EntryData
 from nomad.datamodel.metainfo.annotations import ELNAnnotation
 from nomad.datamodel.metainfo.plot import PlotlyFigure, PlotSection
-from nomad.metainfo import Datetime, Quantity, SchemaPackage, Section, SubSection
+from nomad.metainfo import Datetime, MEnum, Quantity, SchemaPackage, Section, SubSection
 
+from nomad_dsc_trios import evaluation_nomad as EV
 from nomad_dsc_trios.explorer import explorer_figure
-from nomad_dsc_trios.trios import EXPLORER_VARIABLES, overlay_figure, read_trios_csv, read_trios_json
+from nomad_dsc_trios.trios import (
+    EXPLORER_VARIABLES,
+    overlay_figure,
+    read_trios_csv,
+    read_trios_json,
+)
 
 m_package = SchemaPackage(name='DSC on shape memory alloys (TA Instruments TRIOS)')
 
@@ -126,7 +132,9 @@ class DSC_Measurement(ArchiveSection):
     trios_analyses = SubSection(section_def=TRIOS_Analysis, repeats=True)
 
 
-DSC_TEMPERATURES = ('Ms', 'Mf', 'As', 'Af', 'Rs', 'Rf', 'peak_temperature_cooling', 'peak_temperature_heating')
+DSC_PEAK_FIELDS = tuple(f'{a}{i}' for i in (1, 2, 3) for a in ('Ms', 'Mf', 'As', 'Af'))
+DSC_TEMPERATURES = ('Ms', 'Mf', 'As', 'Af', 'Rs', 'Rf', 'peak_temperature_cooling',
+                    'peak_temperature_heating') + DSC_PEAK_FIELDS
 
 
 class DSC_Results(ArchiveSection):
@@ -143,6 +151,23 @@ class DSC_Results(ArchiveSection):
     enthalpy_cooling = _num('joule / gram')
     enthalpy_heating = _num('joule / gram')
     transformation_sequence = _str(description="e.g. B2-B19', B2-R-B19', multistage")
+    # single peaks of the tangent-method evaluation, in the order of the ramp
+    # (cooling: 1 = highest temperature; heating: 1 = lowest temperature)
+    Ms1 = _num('celsius', description='start of cooling peak 1 (tangent method)')
+    Mf1 = _num('celsius', description='end of cooling peak 1 (tangent method)')
+    As1 = _num('celsius', description='start of heating peak 1 (tangent method)')
+    Af1 = _num('celsius', description='end of heating peak 1 (tangent method)')
+    Ms2 = _num('celsius', description='start of cooling peak 2 (tangent method)')
+    Mf2 = _num('celsius', description='end of cooling peak 2 (tangent method)')
+    As2 = _num('celsius', description='start of heating peak 2 (tangent method)')
+    Af2 = _num('celsius', description='end of heating peak 2 (tangent method)')
+    Ms3 = _num('celsius', description='start of cooling peak 3 (tangent method)')
+    Mf3 = _num('celsius', description='end of cooling peak 3 (tangent method)')
+    As3 = _num('celsius', description='start of heating peak 3 (tangent method)')
+    Af3 = _num('celsius', description='end of heating peak 3 (tangent method)')
+    auto_filled = Quantity(type=str, description=(
+        'Values filled automatically (TRIOS analyses or the tangent-method evaluation), JSON. A value that '
+        'still equals its entry here may be replaced by a new evaluation; edited values are kept.'))
 
     # kelvin copies for the search page (see kelvin_copies)
     Ms_K = _kelvin('Ms')
@@ -153,6 +178,93 @@ class DSC_Results(ArchiveSection):
     Rf_K = _kelvin('Rf')
     peak_temperature_cooling_K = _kelvin('peak_temperature_cooling')
     peak_temperature_heating_K = _kelvin('peak_temperature_heating')
+    Ms1_K = _kelvin('Ms1')
+    Mf1_K = _kelvin('Mf1')
+    As1_K = _kelvin('As1')
+    Af1_K = _kelvin('Af1')
+    Ms2_K = _kelvin('Ms2')
+    Mf2_K = _kelvin('Mf2')
+    As2_K = _kelvin('As2')
+    Af2_K = _kelvin('Af2')
+    Ms3_K = _kelvin('Ms3')
+    Mf3_K = _kelvin('Mf3')
+    As3_K = _kelvin('As3')
+    Af3_K = _kelvin('Af3')
+
+
+EVAL_MODES = ('off', 'semi-automatic', 'automatic')
+
+
+class DSC_Window(ArchiveSection):
+    """Semi-automatic: temperature window around one peak (the two TRIOS cursors)."""
+
+    m_def = Section(label_quantity='ramp')
+    ramp = Quantity(type=MEnum('cooling', 'heating'), a_eln=ELNAnnotation(component='EnumEditQuantity'))
+    T1 = _num('celsius', description='Baseline point on one side of the peak')
+    T2 = _num('celsius', description='Baseline point on the other side of the peak')
+
+
+class DSC_EvaluationParameters(ArchiveSection):
+    """Parameters of the tangent-method evaluation. Empty fields: folder settings, then defaults."""
+
+    mode = Quantity(type=MEnum(*EVAL_MODES), a_eln=ELNAnnotation(component='EnumEditQuantity'), description=(
+        'off: nothing is computed (values from TRIOS or entered by hand); semi-automatic: one peak per window '
+        'below; automatic: peaks and windows are found by the plugin'))
+    cycle = Quantity(type=int, a_eln=ELNAnnotation(component='NumberEditQuantity'),
+                     description='Cycle to evaluate (cooling ramp + following heating ramp), default 1')
+    sg_window = _num('kelvin', description='Savitzky-Golay smoothing window, default 3 K')
+    sg_order = Quantity(type=int, a_eln=ELNAnnotation(component='NumberEditQuantity'),
+                        description='Savitzky-Golay polynomial order, default 3')
+    min_height_percent = Quantity(type=np.float64, a_eln=ELNAnnotation(component='NumberEditQuantity'),
+                                  description='Automatic: minimum peak height in % of the largest peak, default 10')
+    noise_factor = Quantity(type=np.float64, a_eln=ELNAnnotation(component='NumberEditQuantity'),
+                            description='Automatic: minimum peak height in multiples of the noise, default 5')
+    min_area = _num('joule / gram', description='Automatic: minimum peak area, default 0.5 J/g')
+    skip_start = _num('minute', description='Ramp start ignored after the rate is reached, default 1 min')
+    curvature_window = _num('kelvin', description='Automatic: max. window for the curvature, default 20 K')
+    knee_fraction = Quantity(type=np.float64, a_eln=ELNAnnotation(component='NumberEditQuantity'), description=(
+        'Automatic: the baseline point is where the curvature beyond the peak has dropped to this fraction '
+        'of its maximum, default 0.1'))
+    windows = SubSection(section_def=DSC_Window, repeats=True)
+
+
+class DSC_Peak(ArchiveSection):
+    m_def = Section(label_quantity='label')
+    label = Quantity(type=str)
+    ramp = Quantity(type=str)
+    number = Quantity(type=int)
+    start = Quantity(type=np.float64, unit='celsius', description='Onset in the direction of the ramp')
+    end = Quantity(type=np.float64, unit='celsius', description='End in the direction of the ramp')
+    peak_temperature = Quantity(type=np.float64, unit='celsius')
+    enthalpy = Quantity(type=np.float64, unit='joule / gram')
+    height = Quantity(type=np.float64, unit='watt / gram')
+    inflection_start = Quantity(type=np.float64, unit='celsius')
+    inflection_end = Quantity(type=np.float64, unit='celsius')
+    T1 = Quantity(type=np.float64, unit='celsius', description='Baseline point (cursor) at the start')
+    T2 = Quantity(type=np.float64, unit='celsius', description='Baseline point (cursor) at the end')
+    flags = Quantity(type=str)
+
+
+class DSC_Evaluation(DSC_EvaluationParameters):
+    """Tangent-method evaluation of this run (see the plot 'Evaluation (tangent method)')."""
+
+    m_def = Section(a_eln=dict(overview=True))
+    settings_file = Quantity(type=str, description='Folder settings used (dsc_evaluation.archive.json)',
+                             a_browser=dict(adaptor='RawFileAdaptor'))
+    parameters_used = Quantity(type=str, description='Effective parameters of the last evaluation (JSON)')
+    windows_from_automatic = Quantity(type=bool, description='The windows were proposed by the automatic mode')
+    messages = Quantity(type=str)
+    peaks = SubSection(section_def=DSC_Peak, repeats=True)
+
+
+class DSC_EvaluationSettings(DSC_EvaluationParameters, EntryData):
+    """Evaluation settings for all DSC entries in this folder and its sub-folders.
+
+    Fields left empty here use the defaults; fields set in a single DSC entry override these. After
+    changing the settings, reprocess the project so that the DSC entries are evaluated again.
+    """
+
+    m_def = Section(label='DSC evaluation settings (folder)')
 
 
 class DSC_SMA(PlotSection, EntryData):
@@ -170,6 +282,7 @@ class DSC_SMA(PlotSection, EntryData):
     instrument_settings = SubSection(section_def=DSC_Settings)
     measurement = SubSection(section_def=DSC_Measurement)
     transformation_results = SubSection(section_def=DSC_Results)
+    evaluation = SubSection(section_def=DSC_Evaluation)
 
     def normalize(self, archive, logger):
         if self.data_file:
@@ -179,39 +292,46 @@ class DSC_SMA(PlotSection, EntryData):
                 logger.error('could not read the TRIOS DSC file', data_file=self.data_file, exc_info=e)
         if self.run_name and archive.metadata is not None:
             archive.metadata.entry_name = self.run_name  # entry list shows the run, not the file name
+        try:
+            EV.evaluate_entry(self, archive, logger)
+        except Exception as e:
+            logger.error('tangent-method evaluation failed', exc_info=e)
         if self.transformation_results is not None:  # also after hand edits of the °C values
             kelvin_copies(self.transformation_results, DSC_TEMPERATURES)
         super().normalize(archive, logger)
 
     def _read_data_file(self, archive, logger):
-        n_json_analyses, explorer = 0, None
+        explorer = None
         name = self.data_file.lower()
         if name.endswith('.json.gz'):
             with archive.m_context.raw_file(self.data_file, 'rb') as f:
                 with gzip.open(f) as g:
                     doc = json.load(io.TextIOWrapper(g, encoding='utf-8-sig'))
-            data, ramps, n_json_analyses, explorer = read_trios_json(doc, self.data_file, tz=TIME_ZONE)
+            data, ramps, _, explorer = read_trios_json(doc, self.data_file, tz=TIME_ZONE)
         else:
             with archive.m_context.raw_file(self.data_file, 'r', encoding='utf-8-sig') as f:
                 if name.endswith('.json'):
-                    data, ramps, n_json_analyses, explorer = read_trios_json(json.load(f), self.data_file,
+                    data, ramps, _, explorer = read_trios_json(json.load(f), self.data_file,
                                                                              tz=TIME_ZONE)
                 else:
                     data, ramps = read_trios_csv(f.read().splitlines(), self.data_file, tz=TIME_ZONE)
-        if n_json_analyses:
-            logger.warning('TRIOS analyses in the JSON export are not read yet; enter Ms/Mf/As/Af by hand',
-                           analyses=n_json_analyses)
 
         # top-level quantities: fill only if empty
         for q in ('run_name', 'operator', 'date', 'notes'):
             if q in data and getattr(self, q) is None:
                 self.m_update_from_dict({q: data[q]})
 
-        # specimen, settings, results: create if missing, fill only empty quantities
+        # TRIOS onset/endset -> Ms/Mf/As/Af: empty fields, or fields still holding an automatic value
+        results = data.get('transformation_results') or {}
+        if results:
+            if self.transformation_results is None:
+                self.transformation_results = DSC_Results()
+            EV.fill(self.transformation_results, results, 'TRIOS')
+
+        # specimen, settings: create if missing, fill only empty quantities
         for name, section_def in (
             ('specimen', DSC_Specimen),
             ('instrument_settings', DSC_Settings),
-            ('transformation_results', DSC_Results),
         ):
             values = data.get(name, {})
             if getattr(self, name) is None:

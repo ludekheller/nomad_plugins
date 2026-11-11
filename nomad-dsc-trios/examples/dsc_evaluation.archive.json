@@ -1,0 +1,8 @@
+{
+  "data": {
+    "m_def": "nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings",
+    "mode": "automatic",
+    "cycle": 1,
+    "min_height_percent": 10
+  }
+}

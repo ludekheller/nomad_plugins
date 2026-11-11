@@ -130,11 +130,11 @@ def test_evaluation_keeps_hand_values_and_semi_windows(upload):
 
 def test_folder_settings(upload):
     process(upload / CSV)
-    (upload / 'dsc_evaluation.archive.json').write_text(json.dumps({'data': {
+    (upload / '0000_dsc_evaluation.archive.json').write_text(json.dumps({'data': {
         'm_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings',
         'mode': 'automatic', 'cycle': 2, 'min_height_percent': 20}}))
     d = process(upload / 'NiTiNb_23-1-1.archive.json').data
-    assert d.evaluation.settings_file.endswith('dsc_evaluation.archive.json')
+    assert d.evaluation.settings_file.split('/')[-1] == '0000_dsc_evaluation.archive.json'
     assert json.loads(d.evaluation.parameters_used)['min_height_percent'] == 20
     assert d.transformation_results.Ms.magnitude == pytest.approx(-56.3, abs=0.3)
 
@@ -156,12 +156,16 @@ def test_results_csv_written_into_the_folder(upload):
     import csv
 
     process(upload / CSV)
-    (upload / 'dsc_evaluation.archive.json').write_text(json.dumps({'data': {
+    (upload / '0000_dsc_evaluation.archive.json').write_text(json.dumps({'data': {
         'm_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings', 'mode': 'automatic', 'cycle': 2}}))
     d = process(upload / 'NiTiNb_23-1-1.archive.json').data
     shutil.copy(upload / 'NiTiNb_23-1-1.archive.json', upload / 'copy.archive.json')  # a second curve
     process(upload / 'copy.archive.json')
-    rows = list(csv.DictReader((upload / 'dsc_results.csv').open()))
+    (upload / 'dsc_results.csv').write_text('project,mainfile,entry_name,x\n')  # table of 0.6.3: replaced
+    (upload / 'other.csv').write_text('a,b\n')
+    process(upload / 'copy.archive.json')
+    assert not (upload / 'dsc_results.csv').exists() and (upload / 'other.csv').exists()
+    rows = list(csv.DictReader((upload / '0000_dsc_results.csv').open()))
     assert [r['mainfile'] for r in rows] == ['NiTiNb_23-1-1.archive.json', 'copy.archive.json']
     r = rows[1]
     assert r['mode'] == 'automatic' and r['cycle'] == '2'  # taken over from the folder settings
@@ -169,7 +173,7 @@ def test_results_csv_written_into_the_folder(upload):
     assert r['n_peaks_cooling'] == '1'
     (upload / 'copy.archive.json').unlink()  # curve deleted: its row goes at the next processing
     process(upload / 'NiTiNb_23-1-1.archive.json')
-    assert [r['mainfile'] for r in csv.DictReader((upload / 'dsc_results.csv').open())] == [
+    assert [r['mainfile'] for r in csv.DictReader((upload / '0000_dsc_results.csv').open())] == [
         'NiTiNb_23-1-1.archive.json']
 
 
@@ -181,7 +185,7 @@ def test_default_settings_created_once_per_folder(tmp_path):
     shutil.copy(DATA / CSV, sub / CSV)
     shutil.copy(DATA / CSV, sub / 'second.csv')
     process(sub / CSV)
-    settings = sub / 'dsc_evaluation.archive.json'
+    settings = sub / '0000_dsc_evaluation.archive.json'
     data = json.loads(settings.read_text())['data']
     assert data['m_def'].endswith('.DSC_EvaluationSettings')
     assert {k: data[k] for k in defaults()} == defaults() and data['mode'] == 'off'
@@ -198,8 +202,19 @@ def test_default_settings_created_once_per_folder(tmp_path):
     sdef = 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings'
     assert create_default_settings(ctx, 'series/DSC/more', sdef) is None  # covered by series/DSC
     (tmp_path / 'other').mkdir()
-    assert create_default_settings(ctx, 'other', sdef) == 'other/dsc_evaluation.archive.json'
+    assert create_default_settings(ctx, 'other', sdef) == 'other/0000_dsc_evaluation.archive.json'
     assert create_default_settings(ctx, 'other', sdef) is None  # second call: already there
+
+
+def test_old_settings_name_still_used(upload):
+    """Folders set up before 0.6.4 have dsc_evaluation.archive.json: used, no second file created."""
+    (upload / 'dsc_evaluation.archive.json').write_text(json.dumps({'data': {
+        'm_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings', 'mode': 'automatic', 'cycle': 2}}))
+    process(upload / CSV)
+    d = process(upload / 'NiTiNb_23-1-1.archive.json').data
+    assert d.evaluation.settings_file.split('/')[-1] == 'dsc_evaluation.archive.json' and d.evaluation.peaks
+    assert not (upload / '0000_dsc_evaluation.archive.json').exists()
+    assert (upload / '0000_dsc_results.csv').exists()
 
 
 def test_settings_entry_shows_defaults(tmp_path):
@@ -227,7 +242,7 @@ def test_default_settings_parallel_creates_one(tmp_path):
     with ThreadPoolExecutor(16) as pool:
         created = list(pool.map(lambda _: create_default_settings(ctx, '', sdef), range(64)))
     assert sum(c is not None for c in created) == 1 and len(calls) == 1
-    assert json.loads((tmp_path / 'dsc_evaluation.archive.json').read_text())['data']['mode'] == 'off'
+    assert json.loads((tmp_path / '0000_dsc_evaluation.archive.json').read_text())['data']['mode'] == 'off'
 
 
 def test_north_files_without_gui(tmp_path, monkeypatch):

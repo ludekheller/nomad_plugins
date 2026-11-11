@@ -70,7 +70,7 @@ peak list with flags; the plot *Evaluation (tangent method)* with baselines, tan
 Values are stored rounded to 0.01 °C / 0.01 J/g. Values typed in by hand are never overwritten
 (bookkeeping in `auto_filled`); Rs/Rf are left to you.
 
-**Whole folders**: the first DSC curve uploaded into a folder creates `dsc_evaluation.archive.json`
+**Whole folders**: the first DSC curve uploaded into a folder creates `0000_dsc_evaluation.archive.json`
 there (mode off, all parameters with their defaults) unless a settings file exists in that folder or
 above; exactly one per folder, an existing file is never overwritten. It can also be uploaded by hand
 (see `examples/`). The settings entry always shows every parameter with the value used. Its settings (mode, cycle, parameters, windows) apply to all DSC entries in this folder
@@ -89,13 +89,16 @@ the current settings, annotated with the effect of each parameter.
 
 Choose folder and curve, drag across a peak to set its window (tangents are recomputed at once),
 "Save to NOMAD" writes mode, cycle and windows into the entry and NOMAD processes it. "Results of
-this folder" saves `dsc_results.csv` into the folder. Needs `ipympl` in the Jupyter image.
+this folder" saves `0000_dsc_results.csv` into the folder. Needs `ipympl` in the Jupyter image.
 
-**Results table, automatic**: every time a DSC curve is processed, its row in `dsc_results.csv`
+**Results table, automatic**: every time a DSC curve is processed, its row in `0000_dsc_results.csv`
 is updated (temperatures in °C, enthalpies in J/g, mode, cycle, peak counts, flags). The table lies
-in the folder of the folder settings (`dsc_evaluation.archive.json`), so one table per batch, or else
+in the folder of the folder settings (`0000_dsc_evaluation.archive.json`), so one table per batch, or else
 in the curve's own folder. Rows of deleted curves disappear at the next processing. Not written in
 published (read-only) projects.
+
+The `0000_` prefix keeps both files at the top of the folder. Settings files from older versions
+(`dsc_evaluation.archive.json`) keep working; an old `dsc_results.csv` written by 0.6.3 is replaced.
 
 **Table of a project or folder**: `python scripts/dsc_results_csv.py <project id> [--folder F]`
 writes one CSV row per DSC entry (temperatures, enthalpies, mode, flags) via the NOMAD API.

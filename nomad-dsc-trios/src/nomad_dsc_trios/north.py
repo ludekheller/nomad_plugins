@@ -16,7 +16,7 @@ In a notebook opened with "OPEN IN JUPYTER" on the project page:
 * "Save to NOMAD" writes mode, cycle and windows into the entry (<run>.archive.json) and lets NOMAD
   process it; reload the entry page to see the result there.
 * "Results of this folder" shows the values stored in NOMAD for all DSC entries of the folder and
-  saves them as dsc_results.csv into the folder.
+  saves them as 0000_dsc_results.csv into the folder.
 
 Needs ipympl in the Jupyter image (matplotlib widget backend).
 """
@@ -33,7 +33,7 @@ from nomad_dsc_trios import evaluation_nomad as EV
 
 DSC_DEF = 'nomad_dsc_trios.schema_packages.dsc.DSC_SMA'
 UPLOADS = os.path.expanduser('~/uploads')
-CSV_NAME = 'dsc_results.csv'
+CSV_NAME = '0000_dsc_results.csv'
 
 
 # ------------------------------------------------------------------ NOMAD API

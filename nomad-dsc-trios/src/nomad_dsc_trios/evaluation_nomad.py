@@ -15,7 +15,8 @@ import numpy as np
 
 from nomad_dsc_trios import evaluation as E
 
-SETTINGS_FILE = 'dsc_evaluation.archive.json'
+SETTINGS_FILE = '0000_dsc_evaluation.archive.json'  # 0000_: listed first in the folder
+OLD_SETTINGS_FILE = 'dsc_evaluation.archive.json'  # name used up to 0.6.3, still recognised
 PARAMS = ('sg_window', 'sg_order', 'min_height_percent', 'noise_factor', 'min_area', 'skip_start',
           'curvature_window', 'knee_fraction')
 MAX_NUMBERED = 3
@@ -98,7 +99,7 @@ def find_settings_in(root, folder):
         if not os.path.isdir(d):
             continue
         names = sorted(n for n in os.listdir(d) if n.endswith('.archive.json'))
-        names.sort(key=lambda n: n != SETTINGS_FILE)
+        names.sort(key=lambda n: n not in (SETTINGS_FILE, OLD_SETTINGS_FILE))
         for n in names:
             try:
                 with open(os.path.join(d, n)) as f:
@@ -142,7 +143,8 @@ def reprocess_folder(archive, logger=None, folder=None):
     return n
 
 
-RESULTS_CSV = 'dsc_results.csv'
+RESULTS_CSV = '0000_dsc_results.csv'  # 0000_: listed first in the folder
+OLD_RESULTS_CSV = 'dsc_results.csv'  # name used in 0.6.3; replaced by RESULTS_CSV
 
 
 def _section_dict(section):
@@ -153,7 +155,7 @@ def _section_dict(section):
 
 
 def update_results_csv(entry, archive, logger=None):
-    """Put this curve's row into <folder>/dsc_results.csv, the folder being the one of the folder
+    """Put this curve's row into <folder>/0000_dsc_results.csv, the folder being the one of the folder
     settings (one table per batch) or else the curve's own folder. Rows of other curves are kept;
     rows of curves whose files are gone are dropped. Locked, as many curves are processed at once."""
     import csv  # noqa: PLC0415
@@ -199,7 +201,19 @@ def update_results_csv(entry, archive, logger=None):
             w.writerows(rows)
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
+    _remove_old_results_csv(os.path.join(root, folder, OLD_RESULTS_CSV))
     return rel
+
+
+def _remove_old_results_csv(path):
+    """The table written by 0.6.3 under the old name; removed only if it is really that table."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            ours = f.readline().startswith('project,mainfile,entry_name,')
+        if ours:
+            os.remove(path)
+    except OSError:
+        pass
 
 
 def find_settings(archive):
@@ -211,7 +225,7 @@ def find_settings(archive):
 
 
 def create_default_settings(context, folder, settings_def, logger=None):
-    """Create <folder>/dsc_evaluation.archive.json with all defaults (mode off), unless settings exist
+    """Create <folder>/0000_dsc_evaluation.archive.json with all defaults (mode off), unless settings exist
     at or above `folder`. Atomic: when many curves of one upload are processed at once, exactly one
     creates the file; returns its path or None."""
     root = _raw_root(context)

@@ -212,7 +212,7 @@ def _par(label, description, unit=None, type_=np.float64, component='NumberEditQ
 class DSC_EvaluationParameters(ArchiveSection):
     """Parameters of the tangent-method evaluation.
 
-    In a DSC entry, empty fields are taken from the folder settings (dsc_evaluation.archive.json),
+    In a DSC entry, empty fields are taken from the folder settings (0000_dsc_evaluation.archive.json),
     then from the defaults. The folder settings show all values, defaults filled in.
     """
 
@@ -263,16 +263,16 @@ class DSC_Evaluation(DSC_EvaluationParameters):
     m_def = Section(a_eln=dict(overview=True))
     use_folder_settings = Quantity(type=bool, description=(
         'Empty all parameters and windows of this entry, so that the folder settings '
-        '(dsc_evaluation.archive.json) apply, and evaluate again'),
+        '(0000_dsc_evaluation.archive.json) apply, and evaluate again'),
         a_eln=ELNAnnotation(component='ActionEditQuantity', label='Use the folder settings'))
     apply_to_folder = Quantity(type=bool, description=(
         'Evaluate all DSC curves that share the folder settings of this curve again (the folder of '
-        'dsc_evaluation.archive.json and its sub-folders); this curve is evaluated when you save'),
+        '0000_dsc_evaluation.archive.json and its sub-folders); this curve is evaluated when you save'),
         a_eln=ELNAnnotation(component='ActionEditQuantity', label='Apply to all DSC curves in this folder'))
     edit_automatic_windows = Quantity(type=bool, description=(
         'Switch to semi-automatic with the windows found automatically, to correct one of them'),
         a_eln=ELNAnnotation(component='ActionEditQuantity', label='Edit the automatic windows'))
-    settings_file = Quantity(type=str, description='Folder settings used (dsc_evaluation.archive.json)',
+    settings_file = Quantity(type=str, description='Folder settings used (0000_dsc_evaluation.archive.json)',
                              a_browser=dict(adaptor='RawFileAdaptor'))
     parameters_used = Quantity(type=str, description='Effective parameters of the last evaluation (JSON)')
     windows_from_automatic = Quantity(type=bool, description='The windows were proposed by the automatic mode')
@@ -340,7 +340,7 @@ class DSC_SMA(PlotSection, EntryData):
             logger.error('tangent-method evaluation failed', exc_info=e)
         if self.transformation_results is not None:  # also after hand edits of the °C values
             kelvin_copies(self.transformation_results, DSC_TEMPERATURES)
-        try:  # <folder>/dsc_results.csv: one row per curve, kept up to date at every processing
+        try:  # <folder>/0000_dsc_results.csv: one row per curve, kept up to date at every processing
             EV.update_results_csv(self, archive, logger)
         except Exception as e:
             logger.warning('could not update the DSC results table', exc_info=e)

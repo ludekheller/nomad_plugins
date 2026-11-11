@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nomad-dept18-apps"
+version = "0.1.0"
+description = "NOMAD search page 'Dept. 18 lab data' for the measurement entries of FZU Dept. 18 plugins"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ludek Heller" }]
+dependencies = ["nomad-lab>=2.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points.'nomad.plugin']
+lab_data_app = "nomad_dept18_apps.apps:lab_data_app"

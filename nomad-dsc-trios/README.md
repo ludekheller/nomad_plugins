@@ -91,6 +91,22 @@ Choose folder and curve, drag across a peak to set its window (tangents are reco
 "Save to NOMAD" writes mode, cycle and windows into the entry and NOMAD processes it. "Results of
 this folder" saves `0000_dsc_results.csv` into the folder. Needs `ipympl` in the Jupyter image.
 
+**On your own PC (Windows, Linux, macOS)**, without the NOMAD server software (Anaconda Prompt on Windows):
+
+    conda create -n nomad python=3.12
+    conda activate nomad
+    conda install git
+    pip install jupyterlab ipympl numpy scipy pandas requests tzdata
+    set R=git+https://github.com/ludekheller/nomad_plugins.git
+    pip install --no-deps "%R%#subdirectory=nomad-dsc-trios"
+    pip install --no-deps "%R%#subdirectory=nomad-dept18-jupyter"
+    jupyter lab
+
+(Linux/macOS: `R=git+...` and `"$R#subdirectory=..."`.) For the DSC tool, download the project ZIP (Files
+tab) and unpack it so that its folders are in `~/uploads/<project id>/`; log in in the tool so that "Save to
+NOMAD" writes into NOMAD (otherwise only the copy on the PC changes, and the tool says so). The helpers in
+`nomad_dept18_jupyter` download files on demand and need no unpacked copy.
+
 **Results table, automatic**: every time a DSC curve is processed, its row in `0000_dsc_results.csv`
 is updated (temperatures in °C, enthalpies in J/g, mode, cycle, peak counts, flags). The table lies
 in the folder of the folder settings (`0000_dsc_evaluation.archive.json`), so one table per batch, or else

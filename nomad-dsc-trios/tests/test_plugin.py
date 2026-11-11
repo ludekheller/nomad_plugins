@@ -259,6 +259,8 @@ def test_north_files_without_gui(tmp_path, monkeypatch):
     from nomad_dsc_trios import evaluation_nomad as EVN
     from nomad_dsc_trios import north
 
+    monkeypatch.setenv('JUPYTERHUB_USER', 'lheller')  # NOMAD's own Jupyter (NORTH)
+
     root = tmp_path / 'uploads' / 'my-project-TG_S6zI2RMCID31b_3DG5g'
     sub = root / 'series' / 'DSC'
     sub.mkdir(parents=True)
@@ -321,3 +323,34 @@ def test_apply_to_folder_button(tmp_path):
     calls.clear()  # from a curve: itself is skipped
     curve = SimpleNamespace(metadata=SimpleNamespace(mainfile='series/DSC/a.archive.json'), m_context=ctx)
     assert reprocess_folder(curve, folder='series') == 1 and calls == ['series/DSC/more/b.archive.json']
+
+
+def test_north_paths_on_windows(monkeypatch):
+    """A downloaded project on a Windows PC: NOMAD paths must use '/', not backslashes."""
+    import ntpath
+
+    from nomad_dsc_trios import north
+
+    monkeypatch.setattr(north.os, 'sep', '\\')
+    monkeypatch.setattr(north.os, 'path', ntpath)
+    monkeypatch.setattr(north, 'UPLOADS', 'C:\\Users\\lh\\uploads')
+    monkeypatch.setattr(north, '_NJ', None)
+    assert north._posix('GZ_test\\sub') == 'GZ_test/sub'
+    assert north.folder_label('C:\\Users\\lh\\uploads\\r4br2UyhTxCBufkAtE3otw\\GZ_test\\sub') == \
+        'r4br2UyhTxCBufkAtE3otw/GZ_test/sub'
+
+
+def test_save_outside_nomad_says_so(tmp_path, monkeypatch):
+    from nomad_dsc_trios import north
+
+    root = tmp_path / 'uploads' / 'r4br2UyhTxCBufkAtE3otw'
+    (root / 'GZ_test').mkdir(parents=True)
+    f = root / 'GZ_test' / 'a.archive.json'
+    f.write_text(json.dumps({'data': {'m_def': north.DSC_DEF, 'data_file': 'GZ_test/a.gz'}}))
+    monkeypatch.delenv('JUPYTERHUB_USER', raising=False)
+    monkeypatch.setattr(north, 'token', lambda: None)
+    run = north.Run(str(f))
+    assert run.rel == 'GZ_test/a.archive.json'
+    assert run.save_evaluation({'mode': 'automatic'}).startswith('NOT saved in NOMAD')
+    monkeypatch.setenv('JUPYTERHUB_USER', 'lheller')
+    assert 'click ⟳' in run.save_evaluation({'mode': 'automatic'})

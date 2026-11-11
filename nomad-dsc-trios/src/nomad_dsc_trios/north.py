@@ -96,9 +96,19 @@ def login(user, password):
     return api
 
 
+def _posix(path):
+    """Relative path with '/' (NOMAD paths; on Windows os.path gives backslashes)."""
+    return path.replace(os.sep, '/')
+
+
+def in_north():
+    """True in NOMAD's own Jupyter (NORTH), False on a PC with a downloaded copy of a project."""
+    return bool(os.environ.get('JUPYTERHUB_USER'))
+
+
 def folder_label(folder):
     """'Project name/sub/folder' for a mounted folder (project names remembered by the helpers)."""
-    rel = os.path.relpath(folder, UPLOADS)
+    rel = _posix(os.path.relpath(folder, UPLOADS))
     pid, _, rest = rel.partition('/')
     names = {}
     if _NJ is not None:
@@ -162,7 +172,7 @@ class Run:
 
     @property
     def rel(self):
-        return os.path.relpath(self.path, self.root)
+        return _posix(os.path.relpath(self.path, self.root))
 
     def load(self):
         if self._segments is None:
@@ -201,7 +211,7 @@ class Run:
             try:
                 import requests  # noqa: PLC0415
 
-                folder = os.path.dirname(self.rel)
+                folder = _posix(os.path.dirname(self.rel))
                 r = requests.put(f'{api}/uploads/{upload_id(self.root)}/raw/{folder}',
                                  params={'file_name': os.path.basename(self.path), 'wait_for_processing': True},
                                  data=text.encode(), headers={'Authorization': f'Bearer {tok}'}, timeout=300)
@@ -213,6 +223,9 @@ class Run:
             err = ''
         with open(self.path, 'w') as f:
             f.write(text)
+        if not in_north():  # a copy on a PC: the file is not the one in NOMAD
+            return (f'NOT saved in NOMAD{err}: only the copy on this PC was changed. '
+                    'Log in above (NOMAD user name and password) and save again.')
         hint = '' if tok else ' (log in above to let NOMAD process it at once)'
         return f'saved to the file{err}; click ⟳ on the project page to process it{hint}'
 
@@ -412,7 +425,7 @@ class DSCEvaluator:
             self.w_msg.value = '<span style="color:#b00">NOMAD API not reachable from Jupyter</span>'
             return
         root = upload_root(self.w_folder.value)
-        folder = os.path.relpath(self.w_folder.value, root)
+        folder = _posix(os.path.relpath(self.w_folder.value, root))
         try:
             rows = fetch(api, upload_id(root), {'Authorization': f'Bearer {tok}'}, '' if folder == '.' else folder)
         except Exception as e:
@@ -420,7 +433,8 @@ class DSCEvaluator:
             return
         path = os.path.join(self.w_folder.value, CSV_NAME)
         write_csv(rows, path)
-        self.w_msg.value = f'{len(rows)} DSC entries; saved as {os.path.relpath(path, root)} in the project'
+        where = 'in the project' if in_north() else 'on this PC'
+        self.w_msg.value = f'{len(rows)} DSC entries; saved as {_posix(os.path.relpath(path, root))} {where}'
         cols = ['entry_name', 'mode', 'cycle', 'Ms', 'Mf', 'As', 'Af', 'enthalpy_cooling', 'enthalpy_heating',
                 'n_peaks_cooling', 'n_peaks_heating', 'flags']
         cols = [c for c in cols if c in COLUMNS]

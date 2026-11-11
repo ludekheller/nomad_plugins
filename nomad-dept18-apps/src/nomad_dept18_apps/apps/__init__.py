@@ -1,6 +1,8 @@
 """Search page 'Dept. 18 lab data': all measurement entries made by the Dept. 18 plugins.
 
 Custom-schema quantities are addressed as  data.<path>#<package.module.Class>  (scalars only).
+Quantities stored in units with 'minute' (e.g. heating rate in K/min) are left out: the GUI's
+unit library cannot convert them ('Units do not match ... undefined K / minute').
 If a schema is renamed or a quantity removed in one of the plugins, update SCHEMAS / the menus here.
 """
 
@@ -41,7 +43,10 @@ def terms(schema, path, title, show_input=True):
 
 
 def hist(schema, path, title, unit=None):
-    return MenuItemHistogram(x=Axis(search_quantity=q(schema, path), unit=unit), title=title)
+    # show_statistics=False: the statistics table of the 2.0 GUI crashes on quantities without
+    # values ('Please provide the value for a Quantity as a number') and on some units
+    return MenuItemHistogram(x=Axis(search_quantity=q(schema, path), unit=unit), title=title,
+                             show_statistics=False)
 
 
 def lay(x, y, w, h):
@@ -58,7 +63,8 @@ menu = Menu(
                 MenuItemTerms(search_quantity='entry_type', title='Measurement type', show_input=False),
                 MenuItemTerms(search_quantity='upload_name', title='Project'),
                 MenuItemTerms(search_quantity='authors.name', title='Author'),
-                MenuItemHistogram(x=Axis(search_quantity='upload_create_time'), title='Upload time'),
+                MenuItemHistogram(x=Axis(search_quantity='upload_create_time'), title='Upload time',
+                                  show_statistics=False),
                 MenuItemTerms(search_quantity='datasets.dataset_name', title='Dataset'),
             ],
         ),
@@ -69,7 +75,6 @@ menu = Menu(
                 terms('dsc', 'specimen.specimen_id', 'Specimen'),
                 terms('dsc', 'specimen.semi_product', 'Semi-product'),
                 terms('dsc', 'instrument_settings.instrument', 'Instrument'),
-                hist('dsc', 'instrument_settings.heating_rate', 'Heating rate', 'K/min'),
                 hist('dsc', 'transformation_results.Ms', 'Ms', 'degC'),
                 hist('dsc', 'transformation_results.Af', 'Af', 'degC'),
                 hist('dsc', 'transformation_results.peak_temperature_cooling', 'Peak T (cooling)', 'degC'),

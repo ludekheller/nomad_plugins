@@ -142,6 +142,66 @@ def reprocess_folder(archive, logger=None, folder=None):
     return n
 
 
+RESULTS_CSV = 'dsc_results.csv'
+
+
+def _section_dict(section):
+    try:
+        return section.m_to_dict() if section is not None else {}
+    except Exception:
+        return {}
+
+
+def update_results_csv(entry, archive, logger=None):
+    """Put this curve's row into <folder>/dsc_results.csv, the folder being the one of the folder
+    settings (one table per batch) or else the curve's own folder. Rows of other curves are kept;
+    rows of curves whose files are gone are dropped. Locked, as many curves are processed at once."""
+    import csv  # noqa: PLC0415
+    import fcntl  # noqa: PLC0415
+    import io  # noqa: PLC0415
+
+    from nomad_dsc_trios.results_table import COLUMNS, row  # noqa: PLC0415
+
+    meta = archive.metadata
+    mainfile = getattr(meta, 'mainfile', None) if meta is not None else None
+    root = _raw_root(archive.m_context) if archive.m_context is not None else None
+    if not mainfile or not root or not os.path.isdir(root):
+        return None
+    if os.path.isabs(mainfile):  # local `nomad parse`: absolute path
+        mainfile = os.path.relpath(mainfile, root)
+    settings_path = find_settings_in(root, os.path.dirname(mainfile))[1]
+    folder = os.path.dirname(settings_path) if settings_path is not None else os.path.dirname(mainfile)
+    rel = os.path.join(folder, RESULTS_CSV) if folder else RESULTS_CSV
+    ev = _section_dict(entry.evaluation)
+    new = row({'entry_id': getattr(meta, 'entry_id', None),
+               'archive': {'metadata': {'upload_name': getattr(meta, 'upload_name', None), 'mainfile': mainfile,
+                                        'entry_name': getattr(meta, 'entry_name', None)},
+                           'data': {'specimen': _section_dict(entry.specimen),
+                                    'transformation_results': _section_dict(entry.transformation_results),
+                                    'evaluation': ev}}})
+    try:
+        fd = os.open(os.path.join(root, rel), os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError as e:  # e.g. a published (read-only) project
+        if logger:
+            logger.info('DSC results table not updated', path=rel, reason=str(e))
+        return None
+    with os.fdopen(fd, 'r+', newline='', encoding='utf-8') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            rows = {r.get('mainfile'): r for r in csv.DictReader(io.StringIO(f.read()))}
+            rows[mainfile] = new
+            rows = [r for m, r in sorted(rows.items(), key=lambda kv: kv[0] or '')
+                    if m and os.path.exists(os.path.join(root, m))]
+            f.seek(0)
+            f.truncate()
+            w = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction='ignore')
+            w.writeheader()
+            w.writerows(rows)
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+    return rel
+
+
 def find_settings(archive):
     mainfile = getattr(archive.metadata, 'mainfile', None) if archive.metadata is not None else None
     root = _raw_root(archive.m_context) if archive.m_context is not None else None

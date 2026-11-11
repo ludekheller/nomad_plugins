@@ -152,6 +152,27 @@ def test_results_csv_row(upload):
     assert r['mode'] == 'automatic' and r['n_peaks_cooling'] == 1
 
 
+def test_results_csv_written_into_the_folder(upload):
+    import csv
+
+    process(upload / CSV)
+    (upload / 'dsc_evaluation.archive.json').write_text(json.dumps({'data': {
+        'm_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings', 'mode': 'automatic', 'cycle': 2}}))
+    d = process(upload / 'NiTiNb_23-1-1.archive.json').data
+    shutil.copy(upload / 'NiTiNb_23-1-1.archive.json', upload / 'copy.archive.json')  # a second curve
+    process(upload / 'copy.archive.json')
+    rows = list(csv.DictReader((upload / 'dsc_results.csv').open()))
+    assert [r['mainfile'] for r in rows] == ['NiTiNb_23-1-1.archive.json', 'copy.archive.json']
+    r = rows[1]
+    assert r['mode'] == 'automatic' and r['cycle'] == '2'  # taken over from the folder settings
+    assert float(r['Ms']) == pytest.approx(d.transformation_results.Ms.magnitude, abs=1e-3)  # °C
+    assert r['n_peaks_cooling'] == '1'
+    (upload / 'copy.archive.json').unlink()  # curve deleted: its row goes at the next processing
+    process(upload / 'NiTiNb_23-1-1.archive.json')
+    assert [r['mainfile'] for r in csv.DictReader((upload / 'dsc_results.csv').open())] == [
+        'NiTiNb_23-1-1.archive.json']
+
+
 def test_default_settings_created_once_per_folder(tmp_path):
     from nomad_dsc_trios.evaluation_nomad import defaults
 

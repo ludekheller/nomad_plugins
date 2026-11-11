@@ -14,6 +14,7 @@ needed. Temperatures in °C, enthalpies in J/g.
 import argparse
 import csv
 import getpass
+import json
 import os
 
 DSC = 'nomad_dsc_trios.schema_packages.dsc.DSC_SMA'
@@ -31,9 +32,13 @@ def row(entry):
     res, ev = data.get('transformation_results') or {}, data.get('evaluation') or {}
     spec = data.get('specimen') or {}
     peaks = ev.get('peaks') or []
+    try:  # mode/cycle taken over from the folder settings are only in parameters_used
+        used = json.loads(ev.get('parameters_used') or '{}')
+    except ValueError:
+        used = {}
     r = {'project': meta.get('upload_name'), 'mainfile': meta.get('mainfile'), 'entry_name': meta.get('entry_name'),
          'entry_id': entry.get('entry_id'), 'specimen_id': spec.get('specimen_id'), 'material': spec.get('material'),
-         'mode': ev.get('mode') or 'off', 'cycle': ev.get('cycle'),
+         'mode': ev.get('mode') or used.get('mode') or 'off', 'cycle': ev.get('cycle') or used.get('cycle'),
          'evaluation_method': res.get('evaluation_method'),
          'n_peaks_cooling': sum(p.get('ramp') == 'cooling' for p in peaks) if ev else None,
          'n_peaks_heating': sum(p.get('ramp') == 'heating' for p in peaks) if ev else None,
@@ -51,7 +56,8 @@ def fetch(url, upload_id, headers, folder=''):
     body = {'owner': 'visible', 'query': {'upload_id': upload_id, 'section_defs.definition_qualified_name': DSC},
             'required': {'metadata': {'entry_name': '*', 'mainfile': '*', 'upload_name': '*'},
                          'data': {'specimen': '*', 'transformation_results': '*',
-                                  'evaluation': {'mode': '*', 'cycle': '*', 'messages': '*', 'peaks': '*'}}},
+                                  'evaluation': {'mode': '*', 'cycle': '*', 'messages': '*', 'peaks': '*',
+                                                         'parameters_used': '*'}}},
             'pagination': {'page_size': 50, 'order_by': 'mainfile'}}
     rows = []
     while True:

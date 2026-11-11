@@ -91,6 +91,12 @@ Choose folder and curve, drag across a peak to set its window (tangents are reco
 "Save to NOMAD" writes mode, cycle and windows into the entry and NOMAD processes it. "Results of
 this folder" saves `dsc_results.csv` into the folder. Needs `ipympl` in the Jupyter image.
 
+**Results table, automatic**: every time a DSC curve is processed, its row in `dsc_results.csv`
+is updated (temperatures in °C, enthalpies in J/g, mode, cycle, peak counts, flags). The table lies
+in the folder of the folder settings (`dsc_evaluation.archive.json`), so one table per batch, or else
+in the curve's own folder. Rows of deleted curves disappear at the next processing. Not written in
+published (read-only) projects.
+
 **Table of a project or folder**: `python scripts/dsc_results_csv.py <project id> [--folder F]`
 writes one CSV row per DSC entry (temperatures, enthalpies, mode, flags) via the NOMAD API.
 

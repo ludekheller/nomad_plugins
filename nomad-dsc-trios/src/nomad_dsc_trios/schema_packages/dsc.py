@@ -340,6 +340,10 @@ class DSC_SMA(PlotSection, EntryData):
             logger.error('tangent-method evaluation failed', exc_info=e)
         if self.transformation_results is not None:  # also after hand edits of the °C values
             kelvin_copies(self.transformation_results, DSC_TEMPERATURES)
+        try:  # <folder>/dsc_results.csv: one row per curve, kept up to date at every processing
+            EV.update_results_csv(self, archive, logger)
+        except Exception as e:
+            logger.warning('could not update the DSC results table', exc_info=e)
         super().normalize(archive, logger)
 
     def _read_data_file(self, archive, logger):

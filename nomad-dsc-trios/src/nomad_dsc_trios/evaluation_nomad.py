@@ -110,13 +110,15 @@ def find_settings_in(root, folder):
     return {}, None
 
 
-def reprocess_folder(archive, logger=None):
-    """Send all DSC entries in the folder of `archive` (and sub-folders) to processing again."""
+def reprocess_folder(archive, logger=None, folder=None):
+    """Send all DSC entries in `folder` (default: the folder of `archive`) and its sub-folders to
+    processing again; the entry of `archive` itself is skipped."""
     mainfile = getattr(archive.metadata, 'mainfile', None) if archive.metadata is not None else None
     root = _raw_root(archive.m_context) if archive.m_context is not None else None
     if not mainfile or not root:
         return 0
-    folder = os.path.dirname(mainfile)
+    if folder is None:
+        folder = os.path.dirname(mainfile)
     n = 0
     for dirpath, _, files in os.walk(os.path.join(root, folder)):
         for name in sorted(files):
@@ -128,7 +130,7 @@ def reprocess_folder(archive, logger=None):
                     m_def = str(json.load(f).get('data', {}).get('m_def', ''))
             except (OSError, ValueError):
                 continue
-            if m_def.endswith('.DSC_SMA'):
+            if m_def.endswith('.DSC_SMA') and os.path.relpath(path, root) != mainfile:
                 try:
                     archive.m_context.process_updated_raw_file(os.path.relpath(path, root), allow_modify=True)
                     n += 1
@@ -323,6 +325,11 @@ def evaluate_entry(entry, archive, logger):
             ev.windows = [DSC_Window(ramp=name, T1=_r(pk.window[0]), T2=_r(pk.window[1]))
                           for name, res in (auto.results_by_ramp.items() if auto else []) for pk in res.peaks]
         ev.mode, ev.windows_from_automatic = 'semi-automatic', False
+    if ev is not None and ev.apply_to_folder:  # button: evaluate all curves sharing these settings
+        ev.apply_to_folder = False
+        folder = os.path.dirname(settings_path) if settings_path else None
+        n = reprocess_folder(archive, logger, folder)
+        logger.info('DSC entries of the folder sent to processing', n=n, folder=folder)
     mode = _get(ev, 'mode') or settings.get('mode') or DEFAULT_MODE
     if mode == 'off':
         if ev is not None:

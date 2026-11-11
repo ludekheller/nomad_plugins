@@ -48,7 +48,8 @@ Section **evaluation** of a DSC entry, field **mode**:
 * **automatic**: the plugin finds the peaks and the baseline points itself. The windows it used are
   written into **windows**; switch to semi-automatic to correct one of them.
 
-Buttons in the evaluation section: **Edit the automatic windows** (switches to semi-automatic with the
+Buttons in the evaluation section: **Apply to all DSC curves in this folder** (evaluates all curves
+that share this curve's folder settings again), **Edit the automatic windows** (switches to semi-automatic with the
 windows found automatically) and **Use the folder settings** (empties this entry's parameters and
 windows so that the folder settings apply). In the folder settings entry: **Apply to all DSC curves in
 this folder** (saves and evaluates all DSC entries of the folder and its sub-folders again).

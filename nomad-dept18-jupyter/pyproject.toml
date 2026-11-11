@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nomad-dept18-jupyter"
+version = "0.1.0"
+description = "Jupyter helpers for the FZU Dept. 18 NOMAD Oasis: projects and files by name, entries and their data"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ludek Heller" }]
+dependencies = ["requests", "pandas"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

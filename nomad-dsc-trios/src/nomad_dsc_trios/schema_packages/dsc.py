@@ -265,6 +265,10 @@ class DSC_Evaluation(DSC_EvaluationParameters):
         'Empty all parameters and windows of this entry, so that the folder settings '
         '(dsc_evaluation.archive.json) apply, and evaluate again'),
         a_eln=ELNAnnotation(component='ActionEditQuantity', label='Use the folder settings'))
+    apply_to_folder = Quantity(type=bool, description=(
+        'Evaluate all DSC curves that share the folder settings of this curve again (the folder of '
+        'dsc_evaluation.archive.json and its sub-folders); this curve is evaluated when you save'),
+        a_eln=ELNAnnotation(component='ActionEditQuantity', label='Apply to all DSC curves in this folder'))
     edit_automatic_windows = Quantity(type=bool, description=(
         'Switch to semi-automatic with the windows found automatically, to correct one of them'),
         a_eln=ELNAnnotation(component='ActionEditQuantity', label='Edit the automatic windows'))

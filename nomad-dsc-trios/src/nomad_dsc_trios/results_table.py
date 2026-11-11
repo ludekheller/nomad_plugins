@@ -66,6 +66,21 @@ def fetch(url, upload_id, headers, folder=''):
         body['pagination']['page_after_value'] = nxt
 
 
+def find_api(candidates=('http://nomad.fzu.cz/api', 'http://nomad.fzu.cz/nomad-oasis/api')):
+    """First '<...>/api/v1' address that answers like a NOMAD API."""
+    import requests  # noqa: PLC0415
+
+    for base in candidates:
+        url = base.rstrip('/') + '/v1'
+        try:
+            r = requests.get(f'{url}/info', timeout=10)
+            if r.ok and 'version' in r.json():
+                return url
+        except Exception:  # noqa: S112
+            continue
+    raise SystemExit('NOMAD API not found; give it with --url')
+
+
 def token(url):
     import requests  # noqa: PLC0415
 
@@ -73,7 +88,7 @@ def token(url):
         return os.environ['NOMAD_TOKEN']
     user = input('NOMAD user name: ')
     pw = getpass.getpass('Password: ')
-    resp = requests.post(f'{url}/auth/token', data={'username': user, 'password': pw}, timeout=60)
+    resp = requests.post(f'{url}/auth/token', data={'grant_type': 'password', 'username': user, 'password': pw}, timeout=60)
     resp.raise_for_status()
     return resp.json()['access_token']
 
@@ -83,8 +98,10 @@ def main(argv=None):
     ap.add_argument('project_id')
     ap.add_argument('--folder', default='', help='only entries in this folder (and its sub-folders)')
     ap.add_argument('-o', '--output', default=None, help='CSV file (default: dsc_results_<project id>.csv)')
-    ap.add_argument('--url', default='http://nomad.fzu.cz/nomad-oasis/api/v1', help='NOMAD API base URL')
+    ap.add_argument('--url', default=None, help='NOMAD API base URL (default: found automatically)')
     a = ap.parse_args(argv)
+    if a.url is None:
+        a.url = find_api()
     headers = {'Authorization': f'Bearer {token(a.url)}'}
     folder = a.folder.strip('/')
     rows = fetch(a.url.rstrip('/'), a.project_id, headers, folder)

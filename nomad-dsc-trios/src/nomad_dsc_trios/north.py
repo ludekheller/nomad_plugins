@@ -36,6 +36,80 @@ UPLOADS = os.path.expanduser('~/uploads')
 CSV_NAME = 'dsc_results.csv'
 
 
+# ------------------------------------------------------------------ NOMAD API
+# NORTH passes NOMAD_CLIENT_URL / NOMAD_CLIENT_ACCESS_TOKEN only in its classic mode; otherwise the
+# API is looked for at these addresses and the user logs in once per session in the GUI.
+API_CANDIDATES = ('http://nomad.fzu.cz/api', 'http://nomad.fzu.cz/nomad-oasis/api')
+_session = {'api': None, 'token': None}
+
+
+try:  # share login and project names with the general Jupyter helpers, if installed
+    from nomad_dept18_jupyter import nomad as _NJ
+except ImportError:
+    _NJ = None
+
+
+def find_api():
+    """Base URL '<...>/api/v1' of a NOMAD API that answers, or None."""
+    if _session['api']:
+        return _session['api']
+    if _NJ is not None:
+        try:
+            _session['api'] = _NJ.api()
+            return _session['api']
+        except Exception:  # noqa: S110 (fall back to the own search)
+            pass
+    import requests  # noqa: PLC0415
+
+    env = os.environ.get('NOMAD_CLIENT_URL')
+    for base in ([env] if env else []) + [os.environ.get('DSC_NOMAD_API', '')] + list(API_CANDIDATES):
+        if not base:
+            continue
+        url = base.rstrip('/') + ('' if base.rstrip('/').endswith('/v1') else '/v1')
+        try:
+            r = requests.get(f'{url}/info', timeout=5)
+            if r.ok and 'version' in r.json():
+                _session['api'] = url
+                return url
+        except Exception:  # noqa: S112 (try the next address)
+            continue
+    return None
+
+
+def token():
+    shared = _NJ.token() if _NJ is not None else None
+    return _session['token'] or shared or os.environ.get('NOMAD_CLIENT_ACCESS_TOKEN')
+
+
+def login(user, password):
+    import requests  # noqa: PLC0415
+
+    api = find_api()
+    if api is None:
+        raise RuntimeError('NOMAD API not reachable from Jupyter')
+    r = requests.post(f'{api}/auth/token', timeout=30,
+                      data={'grant_type': 'password', 'username': user, 'password': password})
+    r.raise_for_status()
+    _session['token'] = r.json()['access_token']
+    if _NJ is not None:
+        _NJ._session.update(api=api, token=_session['token'])
+    return api
+
+
+def folder_label(folder):
+    """'Project name/sub/folder' for a mounted folder (project names remembered by the helpers)."""
+    rel = os.path.relpath(folder, UPLOADS)
+    pid, _, rest = rel.partition('/')
+    names = {}
+    if _NJ is not None:
+        try:
+            names = _NJ._load_names()
+        except Exception:  # noqa: S110
+            pass
+    name = names.get(pid[-22:], pid)
+    return f'{name}/{rest}' if rest else name
+
+
 # ------------------------------------------------------------------ files
 def upload_root(path):
     """Mounted project folder (~/uploads/<name>-<upload id>) that contains `path`."""
@@ -121,15 +195,16 @@ class Run:
         self.data['evaluation'] = {**(self.data.get('evaluation') or {}), **ev}
         self.doc['data'] = self.data
         text = json.dumps(self.doc, indent=2)
-        url, token = os.environ.get('NOMAD_CLIENT_URL'), os.environ.get('NOMAD_CLIENT_ACCESS_TOKEN')
-        if url and token:
+        tok = token()
+        api = find_api() if tok else None
+        if api and tok:
             try:
                 import requests  # noqa: PLC0415
 
                 folder = os.path.dirname(self.rel)
-                r = requests.put(f"{url.rstrip('/')}/v1/uploads/{upload_id(self.root)}/raw/{folder}",
+                r = requests.put(f'{api}/uploads/{upload_id(self.root)}/raw/{folder}',
                                  params={'file_name': os.path.basename(self.path), 'wait_for_processing': True},
-                                 data=text.encode(), headers={'Authorization': f'Bearer {token}'}, timeout=300)
+                                 data=text.encode(), headers={'Authorization': f'Bearer {tok}'}, timeout=300)
                 r.raise_for_status()
                 return 'saved and processed by NOMAD'
             except Exception as e:  # fall back to the mounted file
@@ -138,7 +213,8 @@ class Run:
             err = ''
         with open(self.path, 'w') as f:
             f.write(text)
-        return f'saved to the file{err}; click ⟳ on the project page to process it'
+        hint = '' if tok else ' (log in above to let NOMAD process it at once)'
+        return f'saved to the file{err}; click ⟳ on the project page to process it{hint}'
 
 
 # ------------------------------------------------------------------ GUI
@@ -153,7 +229,7 @@ class DSCEvaluator:
         if folder:
             folder = os.path.abspath(os.path.expanduser(folder))
             folders = sorted(set(folders) | {folder})
-        self.w_folder = W.Dropdown(options=[(os.path.relpath(f, UPLOADS), f) for f in folders],
+        self.w_folder = W.Dropdown(options=[(folder_label(f), f) for f in folders],
                                    value=folder or (folders[0] if folders else None),
                                    description='Folder', layout=W.Layout(width='70%'))
         self.w_run = W.Dropdown(description='Curve', layout=W.Layout(width='45%'))
@@ -166,6 +242,14 @@ class DSCEvaluator:
         self.w_clear_h = W.Button(description='Clear heating windows')
         self.w_save = W.Button(description='Save to NOMAD', button_style='primary', icon='save')
         self.w_table = W.Button(description='Results of this folder', icon='table')
+        self.w_user = W.Text(description='NOMAD user', layout=W.Layout(width='260px'))
+        self.w_pw = W.Password(description='Password', layout=W.Layout(width='260px'))
+        self.w_login = W.Button(description='Log in', icon='sign-in')
+        self.w_login_msg = W.HTML('<i>Log in once per session so that "Save to NOMAD" processes the curve at '
+                                  'once and "Results of this folder" works.</i>')
+        self.login_box = W.HBox([self.w_user, self.w_pw, self.w_login, self.w_login_msg])
+        self.login_box.layout.display = 'none' if token() else None
+        self.w_login.on_click(lambda _: self._login())
         self.w_info = W.HTML()
         self.w_results = W.HTML()
         self.w_msg = W.HTML()
@@ -194,6 +278,7 @@ class DSCEvaluator:
         self.w_table.on_click(lambda _: self._folder_table())
 
         self.box = W.VBox([
+            self.login_box,
             W.HBox([self.w_folder]),
             W.HBox([self.w_run, self.w_prev, self.w_next, self.w_info]),
             W.HBox([self.w_mode, self.w_cycle]),
@@ -214,6 +299,26 @@ class DSCEvaluator:
         from IPython.display import display  # noqa: PLC0415
 
         display(self.box)
+
+    def _login(self):
+        try:
+            api = login(self.w_user.value.strip(), self.w_pw.value)
+        except Exception as e:
+            self.w_login_msg.value = f'<span style="color:#b00">login failed: {e}</span>'
+            return
+        self.w_pw.value = ''
+        self.login_box.layout.display = 'none'
+        self.w_msg.value = f'logged in to {api}'
+        if _NJ is not None:  # project names instead of ids in the folder list
+            try:
+                _NJ._project_records(refresh=True)
+                value = self.w_folder.value
+                self.w_folder.unobserve_all('value')
+                self.w_folder.options = [(folder_label(f), f) for _, f in self.w_folder.options]
+                self.w_folder.value = value
+                self.w_folder.observe(lambda _: self._load_folder(), 'value')
+            except Exception:  # noqa: S110
+                pass
 
     # ---------------------------------------------------------------- state
     def _load_folder(self):
@@ -297,18 +402,21 @@ class DSCEvaluator:
     def _folder_table(self):
         from nomad_dsc_trios.results_table import COLUMNS, fetch, write_csv  # noqa: PLC0415
 
-        url, token = os.environ.get('NOMAD_CLIENT_URL'), os.environ.get('NOMAD_CLIENT_ACCESS_TOKEN')
         self.out_table.clear_output()
-        if not (url and token):
-            self.w_msg.value = 'No NOMAD access token in this Jupyter session (start it from the project page).'
+        tok, api = token(), find_api()
+        if not tok:
+            self.w_msg.value = 'Please log in to NOMAD first (user name and password at the top).'
+            self.login_box.layout.display = None
+            return
+        if api is None:
+            self.w_msg.value = '<span style="color:#b00">NOMAD API not reachable from Jupyter</span>'
             return
         root = upload_root(self.w_folder.value)
         folder = os.path.relpath(self.w_folder.value, root)
         try:
-            rows = fetch(f"{url.rstrip('/')}/v1", upload_id(root), {'Authorization': f'Bearer {token}'},
-                         '' if folder == '.' else folder)
+            rows = fetch(api, upload_id(root), {'Authorization': f'Bearer {tok}'}, '' if folder == '.' else folder)
         except Exception as e:
-            self.w_msg.value = f'<span style="color:#b00">NOMAD API not reachable from Jupyter ({url}): {e}</span>'
+            self.w_msg.value = f'<span style="color:#b00">NOMAD API ({api}): {e}</span>'
             return
         path = os.path.join(self.w_folder.value, CSV_NAME)
         write_csv(rows, path)

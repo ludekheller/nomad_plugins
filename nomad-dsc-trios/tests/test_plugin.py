@@ -273,3 +273,6 @@ def test_apply_to_folder_button(tmp_path):
                               m_context=ctx)
     assert reprocess_folder(archive) == 2
     assert sorted(calls) == ['series/DSC/a.archive.json', 'series/DSC/more/b.archive.json']
+    calls.clear()  # from a curve: itself is skipped
+    curve = SimpleNamespace(metadata=SimpleNamespace(mainfile='series/DSC/a.archive.json'), m_context=ctx)
+    assert reprocess_folder(curve, folder='series') == 1 and calls == ['series/DSC/more/b.archive.json']

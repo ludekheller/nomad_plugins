@@ -43,10 +43,13 @@ def terms(schema, path, title, show_input=True):
 
 
 def hist(schema, path, title, unit=None):
-    # show_statistics=False: the statistics table of the 2.0 GUI crashes on quantities without
-    # values ('Please provide the value for a Quantity as a number') and on some units
-    return MenuItemHistogram(x=Axis(search_quantity=q(schema, path), unit=unit), title=title,
-                             show_statistics=False)
+    # No unit for temperatures stored in degC: the 2.0 GUI converts the histogram step (a
+    # temperature *difference*) to the axis unit; for an absolute 'degC' axis that subtracts
+    # 273.15, the step becomes negative and the page crashes ('Please provide the value for a
+    # Quantity as a number'). Without a unit the axis follows the unit system (K by default).
+    if unit == 'degC':
+        unit = None
+    return MenuItemHistogram(x=Axis(search_quantity=q(schema, path), unit=unit), title=title)
 
 
 def lay(x, y, w, h):
@@ -63,8 +66,7 @@ menu = Menu(
                 MenuItemTerms(search_quantity='entry_type', title='Measurement type', show_input=False),
                 MenuItemTerms(search_quantity='upload_name', title='Project'),
                 MenuItemTerms(search_quantity='authors.name', title='Author'),
-                MenuItemHistogram(x=Axis(search_quantity='upload_create_time'), title='Upload time',
-                                  show_statistics=False),
+                MenuItemHistogram(x=Axis(search_quantity='upload_create_time'), title='Upload time'),
                 MenuItemTerms(search_quantity='datasets.dataset_name', title='Dataset'),
             ],
         ),

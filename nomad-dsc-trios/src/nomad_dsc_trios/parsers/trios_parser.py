@@ -17,6 +17,7 @@ from nomad_dsc_trios.schema_packages.dsc import TRIOS_DSC_Export
 
 ELN_DEF = 'nomad_dsc_trios.schema_packages.dsc.DSC_SMA'
 DMA_DEF = 'nomad_dsc_trios.schema_packages.dma.DMA_TRIOS'
+SETTINGS_DEF = 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings'
 
 
 def instrument_type(path):
@@ -50,6 +51,10 @@ class TriosDSCParser(MatchingParser):
             json.dump({'data': {'m_def': m_def, 'data_file': csv_rel}}, f, indent=2)
         if logger:
             logger.info('created entry for TRIOS export', eln_entry=eln_rel, entry_type=m_def.rsplit('.', 1)[-1])
+        if m_def == ELN_DEF:  # first DSC curve of a folder: editable evaluation settings (mode off)
+            from nomad_dsc_trios.evaluation_nomad import create_default_settings  # noqa: PLC0415
+
+            create_default_settings(context, os.path.dirname(csv_rel), SETTINGS_DEF, logger)
         self._reprocess(context, eln_rel, logger)
 
     @staticmethod

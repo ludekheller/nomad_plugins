@@ -48,6 +48,11 @@ Section **evaluation** of a DSC entry, field **mode**:
 * **automatic**: the plugin finds the peaks and the baseline points itself. The windows it used are
   written into **windows**; switch to semi-automatic to correct one of them.
 
+Buttons in the evaluation section: **Edit the automatic windows** (switches to semi-automatic with the
+windows found automatically) and **Use the folder settings** (empties this entry's parameters and
+windows so that the folder settings apply). In the folder settings entry: **Apply to all DSC curves in
+this folder** (saves and evaluates all DSC entries of the folder and its sub-folders again).
+
 Construction (as TRIOS onset/endset with tangent types Tangent + Inflection): Savitzky-Golay smoothing
 and derivative on a uniform temperature grid; per flank the tangent at the steepest point
 (inflection) is intersected with the tangent to the curve at the baseline point. Automatic peaks:
@@ -60,15 +65,32 @@ Results: overall **Ms** = start of the first cooling peak, **Mf** = end of the l
 **As/Af** the same on heating; **Ms1/Mf1 ... Ms3/Mf3, As1/Af1 ... As3/Af3** for the single peaks in
 the order of the ramp; peak temperature of the largest peak and the total enthalpy per ramp; the
 peak list with flags; the plot *Evaluation (tangent method)* with baselines, tangents and points.
-Values typed in by hand are never overwritten (bookkeeping in `auto_filled`); Rs/Rf are left to you.
+Values are stored rounded to 0.01 °C / 0.01 J/g. Values typed in by hand are never overwritten
+(bookkeeping in `auto_filled`); Rs/Rf are left to you.
 
-**Whole folders**: put `dsc_evaluation.archive.json` (see `examples/`) into a folder of the
-project. Its settings (mode, cycle, parameters, windows) apply to all DSC entries in this folder
+**Whole folders**: the first DSC curve uploaded into a folder creates `dsc_evaluation.archive.json`
+there (mode off, all parameters with their defaults) unless a settings file exists in that folder or
+above; exactly one per folder, an existing file is never overwritten. It can also be uploaded by hand
+(see `examples/`). The settings entry always shows every parameter with the value used. Its settings (mode, cycle, parameters, windows) apply to all DSC entries in this folder
 and its sub-folders; fields set in a single entry win. After changing it, reprocess the project
 (`nomad admin uploads process <project id>` on the server).
 
-**Table of a project**: `python scripts/dsc_results_csv.py <project id>` writes one CSV row per
-DSC entry (temperatures, enthalpies, mode, flags) via the NOMAD API.
+The settings entry shows a plot *What the parameters do*: a synthetic cooling curve evaluated with
+the current settings, annotated with the effect of each parameter.
+
+**With the mouse (NORTH / Jupyter)**: on the project page click OPEN IN JUPYTER, open
+`examples/DSC_evaluation.ipynb` (or a new notebook) and run
+
+    %matplotlib widget
+    from nomad_dsc_trios.north import DSCEvaluator
+    DSCEvaluator()
+
+Choose folder and curve, drag across a peak to set its window (tangents are recomputed at once),
+"Save to NOMAD" writes mode, cycle and windows into the entry and NOMAD processes it. "Results of
+this folder" saves `dsc_results.csv` into the folder. Needs `ipympl` in the Jupyter image.
+
+**Table of a project or folder**: `python scripts/dsc_results_csv.py <project id> [--folder F]`
+writes one CSV row per DSC entry (temperatures, enthalpies, mode, flags) via the NOMAD API.
 
 The engine (`nomad_dsc_trios.evaluation`) is plain numpy/scipy and can be used on its own.
 

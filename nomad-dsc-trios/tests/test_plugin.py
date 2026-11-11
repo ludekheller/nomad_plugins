@@ -5,7 +5,6 @@ Simulates what the Oasis does: the TRIOS CSV is matched by the parser, which wri
 """
 
 import json
-import sys
 import shutil
 from pathlib import Path
 
@@ -141,8 +140,7 @@ def test_folder_settings(upload):
 
 
 def test_results_csv_row(upload):
-    sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
-    from dsc_results_csv import COLUMNS, row
+    from nomad_dsc_trios.results_table import COLUMNS, row
 
     process(upload / CSV)
     eln = upload / 'NiTiNb_23-1-1.archive.json'
@@ -152,3 +150,126 @@ def test_results_csv_row(upload):
     assert set(r) == set(COLUMNS)
     assert r['Ms'] == pytest.approx(archive.data.transformation_results.Ms.magnitude, abs=1e-3)  # °C
     assert r['mode'] == 'automatic' and r['n_peaks_cooling'] == 1
+
+
+def test_default_settings_created_once_per_folder(tmp_path):
+    from nomad_dsc_trios.evaluation_nomad import defaults
+
+    sub = tmp_path / 'series' / 'DSC'
+    sub.mkdir(parents=True)
+    shutil.copy(DATA / CSV, sub / CSV)
+    shutil.copy(DATA / CSV, sub / 'second.csv')
+    process(sub / CSV)
+    settings = sub / 'dsc_evaluation.archive.json'
+    data = json.loads(settings.read_text())['data']
+    assert data['m_def'].endswith('.DSC_EvaluationSettings')
+    assert {k: data[k] for k in defaults()} == defaults() and data['mode'] == 'off'
+    settings.write_text(json.dumps({'data': {**data, 'mode': 'automatic'}}))  # edited by the user
+    process(sub / 'second.csv')
+    assert json.loads(settings.read_text())['data']['mode'] == 'automatic'  # not overwritten
+    # locally the upload root is the file's folder; on the server it is the project: check the helper
+    from types import SimpleNamespace
+
+    from nomad_dsc_trios.evaluation_nomad import create_default_settings
+
+    (sub / 'more').mkdir()
+    ctx = SimpleNamespace(local_dir=str(tmp_path), process_updated_raw_file=lambda *a, **k: None)
+    sdef = 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings'
+    assert create_default_settings(ctx, 'series/DSC/more', sdef) is None  # covered by series/DSC
+    (tmp_path / 'other').mkdir()
+    assert create_default_settings(ctx, 'other', sdef) == 'other/dsc_evaluation.archive.json'
+    assert create_default_settings(ctx, 'other', sdef) is None  # second call: already there
+
+
+def test_settings_entry_shows_defaults(tmp_path):
+    from nomad_dsc_trios.evaluation_nomad import defaults
+
+    f = tmp_path / 'dsc_evaluation.archive.json'
+    f.write_text(json.dumps({'data': {'m_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings',
+                                      'mode': 'automatic', 'min_height_percent': 20}}))
+    d = process(f).data
+    assert d.mode == 'automatic' and d.min_height_percent == 20  # set values kept
+    assert d.sg_window.magnitude == defaults()['sg_window'] and d.knee_fraction == defaults()['knee_fraction']
+    assert d.cycle == 1
+    assert [f.label for f in d.figures] == ['What the parameters do']
+
+
+def test_default_settings_parallel_creates_one(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    from nomad_dsc_trios.evaluation_nomad import create_default_settings
+
+    calls = []
+    ctx = SimpleNamespace(local_dir=str(tmp_path), process_updated_raw_file=lambda *a, **k: calls.append(a))
+    sdef = 'nomad_dsc_trios.schema_packages.dsc.DSC_EvaluationSettings'
+    with ThreadPoolExecutor(16) as pool:
+        created = list(pool.map(lambda _: create_default_settings(ctx, '', sdef), range(64)))
+    assert sum(c is not None for c in created) == 1 and len(calls) == 1
+    assert json.loads((tmp_path / 'dsc_evaluation.archive.json').read_text())['data']['mode'] == 'off'
+
+
+def test_north_files_without_gui(tmp_path, monkeypatch):
+    """Jupyter helper: find DSC folders in mounted projects, evaluate a run, save windows to the file."""
+    from nomad_dsc_trios import evaluation_nomad as EVN
+    from nomad_dsc_trios import north
+
+    root = tmp_path / 'uploads' / 'my-project-TG_S6zI2RMCID31b_3DG5g'
+    sub = root / 'series' / 'DSC'
+    sub.mkdir(parents=True)
+    shutil.copy(DATA / CSV, sub / CSV)
+    (sub / 'run.archive.json').write_text(json.dumps({'data': {
+        'm_def': north.DSC_DEF, 'data_file': f'series/DSC/{CSV}', 'specimen': {'material': 'NiTiNb'}}}))
+    assert north.dsc_folders(str(tmp_path / 'uploads')) == [str(sub)]
+    run = north.Run(str(sub / 'run.archive.json'))
+    assert north.upload_id(run.root) == 'TG_S6zI2RMCID31b_3DG5g' and run.rel == 'series/DSC/run.archive.json'
+    segments, exo_up = run.load()
+    res = EVN.evaluate(segments, exo_up, {'mode': 'automatic', 'cycle': 2}, {})
+    assert res.values['Ms'] == pytest.approx(-56.3, abs=0.3)
+    monkeypatch.delenv('NOMAD_CLIENT_ACCESS_TOKEN', raising=False)
+    msg = run.save_evaluation({'mode': 'semi-automatic', 'windows': [{'ramp': 'cooling', 'T1': -30, 'T2': -110}]})
+    assert 'saved to the file' in msg
+    saved = json.loads((sub / 'run.archive.json').read_text())['data']
+    assert saved['evaluation']['mode'] == 'semi-automatic' and saved['specimen'] == {'material': 'NiTiNb'}
+
+
+def test_buttons_in_the_entry(upload):
+    process(upload / CSV)
+    eln = upload / 'NiTiNb_23-1-1.archive.json'
+    _set(eln, evaluation={'mode': 'automatic', 'cycle': 2})
+    d = process(eln).data
+    auto = [(w.ramp, w.T1.magnitude, w.T2.magnitude) for w in d.evaluation.windows]
+    ms = d.transformation_results.Ms.magnitude
+    doc = json.loads(eln.read_text())
+    doc['data'] = d.m_to_dict()
+    doc['data']['evaluation']['edit_automatic_windows'] = True  # button
+    eln.write_text(json.dumps(doc))
+    d = process(eln).data
+    ev = d.evaluation
+    assert ev.mode == 'semi-automatic' and not ev.edit_automatic_windows and not ev.windows_from_automatic
+    assert [(w.ramp, w.T1.magnitude, w.T2.magnitude) for w in ev.windows] == auto
+    assert d.transformation_results.Ms.magnitude == pytest.approx(ms, abs=0.01)  # same windows, same result
+    doc['data'] = d.m_to_dict()
+    doc['data']['evaluation']['use_folder_settings'] = True  # button
+    eln.write_text(json.dumps(doc))
+    ev = process(eln).data.evaluation
+    assert ev.mode is None and ev.cycle is None and not ev.windows and not ev.use_folder_settings
+
+
+def test_apply_to_folder_button(tmp_path):
+    from types import SimpleNamespace
+
+    from nomad_dsc_trios.evaluation_nomad import reprocess_folder
+
+    sub = tmp_path / 'series' / 'DSC'
+    (sub / 'more').mkdir(parents=True)
+    dsc = {'data': {'m_def': 'nomad_dsc_trios.schema_packages.dsc.DSC_SMA'}}
+    for p in (sub / 'a.archive.json', sub / 'more' / 'b.archive.json'):
+        p.write_text(json.dumps(dsc))
+    (sub / 'other.archive.json').write_text(json.dumps({'data': {'m_def': 'x.Other'}}))
+    calls = []
+    ctx = SimpleNamespace(local_dir=str(tmp_path), process_updated_raw_file=lambda p, **k: calls.append(p))
+    archive = SimpleNamespace(metadata=SimpleNamespace(mainfile='series/DSC/dsc_evaluation.archive.json'),
+                              m_context=ctx)
+    assert reprocess_folder(archive) == 2
+    assert sorted(calls) == ['series/DSC/a.archive.json', 'series/DSC/more/b.archive.json']

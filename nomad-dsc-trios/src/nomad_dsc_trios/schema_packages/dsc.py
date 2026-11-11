@@ -204,27 +204,39 @@ class DSC_Window(ArchiveSection):
     T2 = _num('celsius', description='Baseline point on the other side of the peak')
 
 
-class DSC_EvaluationParameters(ArchiveSection):
-    """Parameters of the tangent-method evaluation. Empty fields: folder settings, then defaults."""
+def _par(label, description, unit=None, type_=np.float64, component='NumberEditQuantity'):
+    return Quantity(type=type_, unit=unit, description=description,
+                    a_eln=ELNAnnotation(component=component, label=label))
 
-    mode = Quantity(type=MEnum(*EVAL_MODES), a_eln=ELNAnnotation(component='EnumEditQuantity'), description=(
-        'off: nothing is computed (values from TRIOS or entered by hand); semi-automatic: one peak per window '
-        'below; automatic: peaks and windows are found by the plugin'))
-    cycle = Quantity(type=int, a_eln=ELNAnnotation(component='NumberEditQuantity'),
-                     description='Cycle to evaluate (cooling ramp + following heating ramp), default 1')
-    sg_window = _num('kelvin', description='Savitzky-Golay smoothing window, default 3 K')
-    sg_order = Quantity(type=int, a_eln=ELNAnnotation(component='NumberEditQuantity'),
-                        description='Savitzky-Golay polynomial order, default 3')
-    min_height_percent = Quantity(type=np.float64, a_eln=ELNAnnotation(component='NumberEditQuantity'),
-                                  description='Automatic: minimum peak height in % of the largest peak, default 10')
-    noise_factor = Quantity(type=np.float64, a_eln=ELNAnnotation(component='NumberEditQuantity'),
-                            description='Automatic: minimum peak height in multiples of the noise, default 5')
-    min_area = _num('joule / gram', description='Automatic: minimum peak area, default 0.5 J/g')
-    skip_start = _num('minute', description='Ramp start ignored after the rate is reached, default 1 min')
-    curvature_window = _num('kelvin', description='Automatic: max. window for the curvature, default 20 K')
-    knee_fraction = Quantity(type=np.float64, a_eln=ELNAnnotation(component='NumberEditQuantity'), description=(
-        'Automatic: the baseline point is where the curvature beyond the peak has dropped to this fraction '
-        'of its maximum, default 0.1'))
+
+class DSC_EvaluationParameters(ArchiveSection):
+    """Parameters of the tangent-method evaluation.
+
+    In a DSC entry, empty fields are taken from the folder settings (dsc_evaluation.archive.json),
+    then from the defaults. The folder settings show all values, defaults filled in.
+    """
+
+    mode = _par('Mode', 'off: nothing is computed (values from TRIOS or entered by hand); semi-automatic: one '
+                'peak per window below; automatic: peaks and windows are found by the plugin. Default off',
+                type_=MEnum(*EVAL_MODES), component='EnumEditQuantity')
+    cycle = _par('Cycle', 'Cycle to evaluate: its cooling ramp and the following heating ramp. Default 1', type_=int)
+    sg_window = _par('Smoothing window (Savitzky-Golay)', 'Width of the Savitzky-Golay window used for '
+                     'smoothing and for the derivative (slope). Default 3 K', 'kelvin')
+    sg_order = _par('Smoothing polynomial order', 'Polynomial order of the Savitzky-Golay filter. Default 3',
+                    type_=int)
+    min_height_percent = _par('Min. peak height (% of the largest peak)', 'Automatic: a peak counts if it is at '
+                              'least this high, in % of the largest peak of the same ramp. Default 10 %')
+    noise_factor = _par('Min. peak height (x noise)', 'Automatic: a peak must also be this many times higher '
+                        'than the noise of the curve. Default 5')
+    min_area = _par('Min. peak area', 'Automatic: smaller peaks (spikes) are ignored. Default 0.5 J/g',
+                    'joule / gram')
+    skip_start = _par('Skipped at the ramp start', 'Time ignored at the start of each ramp after the rate is '
+                      'reached (start-up transient). Default 1 min', 'minute')
+    curvature_window = _par('Curvature window (max.)', 'Automatic: largest smoothing window for the curvature '
+                            'used to find the baseline points; narrower for narrow peaks. Default 20 K', 'kelvin')
+    knee_fraction = _par('Baseline point: curvature fraction', 'Automatic: the baseline point beyond a peak is '
+                         'where the curvature has dropped to this fraction of its maximum at the knee. Smaller = '
+                         'baseline point further from the peak (Ms higher, Mf lower ...). Default 0.1')
     windows = SubSection(section_def=DSC_Window, repeats=True)
 
 
@@ -249,6 +261,13 @@ class DSC_Evaluation(DSC_EvaluationParameters):
     """Tangent-method evaluation of this run (see the plot 'Evaluation (tangent method)')."""
 
     m_def = Section(a_eln=dict(overview=True))
+    use_folder_settings = Quantity(type=bool, description=(
+        'Empty all parameters and windows of this entry, so that the folder settings '
+        '(dsc_evaluation.archive.json) apply, and evaluate again'),
+        a_eln=ELNAnnotation(component='ActionEditQuantity', label='Use the folder settings'))
+    edit_automatic_windows = Quantity(type=bool, description=(
+        'Switch to semi-automatic with the windows found automatically, to correct one of them'),
+        a_eln=ELNAnnotation(component='ActionEditQuantity', label='Edit the automatic windows'))
     settings_file = Quantity(type=str, description='Folder settings used (dsc_evaluation.archive.json)',
                              a_browser=dict(adaptor='RawFileAdaptor'))
     parameters_used = Quantity(type=str, description='Effective parameters of the last evaluation (JSON)')
@@ -257,14 +276,33 @@ class DSC_Evaluation(DSC_EvaluationParameters):
     peaks = SubSection(section_def=DSC_Peak, repeats=True)
 
 
-class DSC_EvaluationSettings(DSC_EvaluationParameters, EntryData):
+class DSC_EvaluationSettings(DSC_EvaluationParameters, PlotSection, EntryData):
     """Evaluation settings for all DSC entries in this folder and its sub-folders.
 
-    Fields left empty here use the defaults; fields set in a single DSC entry override these. After
-    changing the settings, reprocess the project so that the DSC entries are evaluated again.
+    Every parameter is shown with the value used (defaults filled in); fields set in a single DSC
+    entry override these. After changing the settings, click 'Apply to all DSC curves in this folder'
+    (or reprocess the project) so that the DSC entries are evaluated again.
     """
 
     m_def = Section(label='DSC evaluation settings (folder)')
+    apply_to_folder = Quantity(type=bool, description=(
+        'Save these settings and evaluate all DSC curves in this folder and its sub-folders again'),
+        a_eln=ELNAnnotation(component='ActionEditQuantity', label='Apply to all DSC curves in this folder'))
+
+    def normalize(self, archive, logger):
+        EV.fill_defaults(self)  # show every parameter with the value that is used
+        if self.apply_to_folder:
+            try:
+                n = EV.reprocess_folder(archive, logger)
+                logger.info('DSC entries of the folder sent to processing', n=n)
+            finally:
+                self.apply_to_folder = False
+        try:
+            fig = EV.schematic_figure({k: EV._plain(getattr(self, k)) for k in EV.PARAMS})
+            self.figures = [PlotlyFigure(label='What the parameters do', figure=fig)]
+        except Exception as e:
+            logger.warning('could not draw the parameter schematic', exc_info=e)
+        super().normalize(archive, logger)
 
 
 class DSC_SMA(PlotSection, EntryData):

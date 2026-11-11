@@ -433,7 +433,7 @@ def read_trios_json(doc, json_name, tz='Europe/Prague'):
             'procedure': ' | '.join(s.get('Name', '').strip() for s in proc.get('Steps') or []),
         },
         'measurement': {
-            'tri_file': re.sub(r'\.json(\.gz)?$', '.tri', json_name, flags=re.IGNORECASE),
+            'tri_file': re.sub(r'\.(json\.gz|json|gz)$', '.tri', json_name, flags=re.IGNORECASE),
             'segments': segments,
             'trios_analyses': trios_analyses,
         },

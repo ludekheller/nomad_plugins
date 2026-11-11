@@ -314,7 +314,7 @@ class DSC_SMA(PlotSection, EntryData):
 
     m_def = Section(label='DSC (SMA, TRIOS)')
 
-    data_file = _file('TRIOS DSC export (.csv, or TRIOS JSON .json / .json.gz) in this upload; read on save')
+    data_file = _file('TRIOS DSC export (.csv, or TRIOS JSON .json / .json.gz / .gz) in this upload; read on save')
     run_name = _str()
     operator = _str()
     date = Quantity(type=Datetime, a_eln=ELNAnnotation(component='DateTimeEditQuantity'))
@@ -345,7 +345,7 @@ class DSC_SMA(PlotSection, EntryData):
     def _read_data_file(self, archive, logger):
         explorer = None
         name = self.data_file.lower()
-        if name.endswith('.json.gz'):
+        if name.endswith('.gz'):  # <run>.json.gz or <run>.gz
             with archive.m_context.raw_file(self.data_file, 'rb') as f:
                 with gzip.open(f) as g:
                     doc = json.load(io.TextIOWrapper(g, encoding='utf-8-sig'))

@@ -106,3 +106,34 @@ def test_gzipped_json(upload):
     d = process(eln).data
     assert d.run_name == 'niti_slm_hex74/121'
     assert [seg.segment_type for seg in d.measurement.segments][:3] == ['ramp_cooling', 'isothermal', 'ramp_heating']
+
+
+@pytest.mark.parametrize('name', ['niti_slm_hex74121.gz', 'NITI_SLM_HEX74121.JSON.GZ'])
+def test_gz_without_json_in_the_name(upload, name):
+    """TRIOS's own gzip export is named <run>.gz; upper case endings are recognised too."""
+    import gzip
+
+    from nomad.parsing.parsers import match_parser
+
+    gz = upload / name
+    gz.write_bytes(gzip.compress((upload / JSON).read_bytes()))
+    (upload / JSON).unlink()
+    parser, _ = match_parser(str(gz))
+    assert type(parser).__name__ == 'TriosDSCParser'
+    stem = name.split('.')[0]
+    raw = process(gz)
+    assert raw.data.dsc_entry == f'{stem}.archive.json'
+    d = process(upload / f'{stem}.archive.json').data
+    assert d.run_name == 'niti_slm_hex74/121' and d.measurement.segments
+    assert d.measurement.tri_file is None  # no <run>.tri uploaded
+
+
+def test_other_gz_is_not_matched(upload):
+    import gzip
+
+    from nomad.parsing.parsers import match_parser
+
+    other = upload / 'notes.gz'
+    other.write_bytes(gzip.compress(b'{"just": "some json"}'))
+    parser = match_parser(str(other))[0]
+    assert parser is None or 'Trios' not in type(parser).__name__

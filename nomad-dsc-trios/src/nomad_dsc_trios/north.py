@@ -170,7 +170,7 @@ class Run:
 
             f = os.path.join(self.root, self.data['data_file'])
             low = f.lower()
-            if low.endswith('.json.gz'):
+            if low.endswith('.gz'):
                 with gzip.open(f) as g:
                     d = read_trios_json(json.load(io.TextIOWrapper(g, encoding='utf-8-sig')), f)[0]
             elif low.endswith('.json'):

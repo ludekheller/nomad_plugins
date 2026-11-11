@@ -1,6 +1,6 @@
 """Parser for TRIOS exports: DSC (CSV, JSON) and DMA (JSON).
 
-For an uploaded `<run>.csv`, `<run>.json` or `<run>.json.gz` it creates the editable entry
+For an uploaded `<run>.csv`, `<run>.json`, `<run>.json.gz` or `<run>.gz` it creates the editable entry
 `<run>.archive.json` (DSC_SMA or DMA_TRIOS by the instrument type in the export,
 data_file = the export) unless that file already exists. That entry reads the export when
 it is processed. The export itself becomes a small read-only entry pointing to it.
@@ -35,7 +35,7 @@ def instrument_type(path):
 class TriosDSCParser(MatchingParser):
     def parse(self, mainfile, archive, logger=None, child_archives=None):
         csv_rel = mainfile.rsplit('/raw/', 1)[-1] if '/raw/' in mainfile else os.path.basename(mainfile)
-        eln_rel = re.sub(r'\.(csv|json|json\.gz)$', '', csv_rel, flags=re.IGNORECASE) + '.archive.json'
+        eln_rel = re.sub(r'\.(csv|json\.gz|json|gz)$', '', csv_rel, flags=re.IGNORECASE) + '.archive.json'
 
         archive.data = TRIOS_DSC_Export(dsc_entry=eln_rel)
         context = archive.m_context

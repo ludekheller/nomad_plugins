@@ -20,7 +20,8 @@ trios_dsc_parser = TriosDSCParserEntryPoint(
 trios_dsc_json_parser = TriosDSCParserEntryPoint(
     name='TriosDSCJsonParser',
     description='Creates a DSC or DMA entry for every TA Instruments TRIOS JSON export.',
-    mainfile_name_re=r'^(?!.*\.archive\.json$).*\.json(\.gz)?$',  # not NOMAD's own *.archive.json
+    # <run>.json, <run>.json.gz or <run>.gz (any case); not NOMAD's own *.archive.json
+    mainfile_name_re=r'(?i)^(?!.*\.archive\.json$).*\.(json|json\.gz|gz)$',
     mainfile_mime_re=r'(text|application)/.*',
     mainfile_contents_re=r'TRIOSJSONExportSchema',
     supported_compressions=['gz'],  # <run>.json.gz: about 10x smaller

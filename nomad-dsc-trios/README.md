@@ -3,7 +3,8 @@
 (TA Instruments TRIOS: DSC and DMA.)
 
 NOMAD plugin for DSC measurements on shape memory alloys exported from
-TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8).
+TA Instruments TRIOS (DSC 2500): CSV export or TRIOS JSON export (TRIOS >= 5.8), also gzip-compressed as
+`<run>.json.gz` or `<run>.gz` (TRIOS's own gzip export).
 
 ## What it does
 
